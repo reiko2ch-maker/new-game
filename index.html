@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <title>夏の売店 操作感テスト</title>
+  <meta name="description" content="縦画面スマホ向け一人称ホラー操作テスト。GitHub Pagesにそのまま配置可能。" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <div id="overlay">
+      <div class="top-bar">
+        <div class="title-wrap">
+          <div class="eyebrow">縦画面スマホ向け 操作感プロトタイプ</div>
+          <h1>夏の売店</h1>
+        </div>
+        <button id="scanlineToggle" class="small-btn" type="button">SCANLINE: ON</button>
+      </div>
+
+      <div class="center-ui">
+        <div id="crosshair"></div>
+        <div id="interactionHint">外の空気が少し生ぬるい。</div>
+      </div>
+
+      <div class="bottom-ui">
+        <div class="left-controls">
+          <div id="joystickBase" class="joystick-base">
+            <div id="joystickKnob" class="joystick-knob"></div>
+          </div>
+          <div class="control-caption">移動</div>
+        </div>
+
+        <div class="right-controls">
+          <button id="runButton" class="action-btn action-run" type="button">走る</button>
+          <button id="interactButton" class="action-btn action-main" type="button">調べる</button>
+          <div class="control-caption right">右側をなぞると視点移動</div>
+        </div>
+      </div>
+
+      <div id="toast"></div>
+
+      <div id="introCard" class="intro-card">
+        <div class="intro-panel">
+          <div class="intro-small">テスト用 / ストーリーなし</div>
+          <h2>操作感だけ先に確認できる版</h2>
+          <p>
+            縦画面スマホ向けに、<strong>歩く・見る・店に入る・調べる</strong>の感触を優先した試作です。<br />
+            左下スティックで移動、右半分ドラッグで視点、右下で調べる。
+          </p>
+          <ul>
+            <li>店の外と中を自由に歩ける</li>
+            <li>自動ドア、冷蔵庫、レジ、CRTを調べられる</li>
+            <li>操作は軽すぎず重すぎないスマホ寄せ</li>
+          </ul>
+          <button id="startButton" class="start-btn" type="button">テスト開始</button>
+        </div>
+      </div>
+
+      <div id="scanlineLayer" aria-hidden="true"></div>
+      <div id="vignetteLayer" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
