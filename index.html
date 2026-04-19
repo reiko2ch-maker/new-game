@@ -3,34 +3,37 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>田舎町・商店前通り</title>
+  <title>田舎町・商店前通り v7</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="app">
-    <canvas id="gameCanvas" width="360" height="640" aria-label="田舎町マップ"></canvas>
+    <canvas id="view"></canvas>
 
-    <div class="hud top-left glass">
-      <div class="mini">縦画面スマホ向け / 実働版 / マップ重視</div>
+    <div class="hud card title-card">
+      <div class="eyebrow">縦画面スマホ向け / 軽量最適化 / マップ重視 v7</div>
       <div class="title">田舎町・商店前通り</div>
-      <div class="sub">左下スティック移動 / 右半分ドラッグ視点</div>
+      <div class="desc">左下スティックで移動 / 右半分ドラッグで視点</div>
     </div>
 
-    <button id="scanlineBtn" class="hud top-right glass chip" type="button">SCANLINE: ON</button>
+    <div class="hud top-right stack">
+      <button id="runBtn" class="chip run">走る: OFF</button>
+      <button id="scanBtn" class="chip">SCANLINE: ON</button>
+      <button id="qualityBtn" class="chip small">QUALITY: MID</button>
+    </div>
 
-    <div id="message" class="hud center glass hidden"></div>
+    <div id="hint" class="hud card hint-card">コンビニ前スタート。重さを抑えつつ、立体感と街の密度を戻した版です。</div>
 
-    <div class="hud bottom-left joystick-wrap">
-      <div id="joystickBase" class="joystick-base">
-        <div id="joystickKnob" class="joystick-knob"></div>
+    <div class="hud bottom-left pad-wrap">
+      <div id="pad" class="pad">
+        <div id="stick" class="stick"></div>
       </div>
       <div class="label">移動</div>
     </div>
 
-    <div class="hud bottom-right controls-wrap">
-      <button id="runBtn" class="action-btn run on" type="button">走る: ON</button>
-      <button id="interactBtn" class="action-btn interact" type="button">調べる</button>
-      <div class="label right">右半分をなぞると視点移動</div>
+    <div class="hud bottom-right actions">
+      <button id="actBtn" class="action">調べる</button>
+      <div class="label right">右半分ドラッグで視点移動</div>
     </div>
 
     <div class="crosshair"></div>

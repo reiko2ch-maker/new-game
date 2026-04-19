@@ -1,885 +1,782 @@
 (() => {
   'use strict';
 
-  const canvas = document.getElementById('gameCanvas');
-  const ctx = canvas.getContext('2d', { alpha: false });
-  ctx.imageSmoothingEnabled = false;
-
-  const scanlineBtn = document.getElementById('scanlineBtn');
+  const canvas = document.getElementById('view');
+  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
   const runBtn = document.getElementById('runBtn');
-  const interactBtn = document.getElementById('interactBtn');
-  const messageEl = document.getElementById('message');
-  const joyBase = document.getElementById('joystickBase');
-  const joyKnob = document.getElementById('joystickKnob');
-
-  const baseW = 360;
-  const baseH = 640;
-  canvas.width = baseW;
-  canvas.height = baseH;
-
-  const HALF_FOV = Math.PI / 5.2;
-  const FOV = HALF_FOV * 2;
-  const MOVE_SPEED = 1.7;
-  const RUN_MULT = 1.75;
-  const ROT_SPEED = 0.0028;
-  const MAX_DIST = 22;
-  const horizonBase = 256;
-  const cameraHeight = 0.52;
-  const floorPlane = 0.72;
-  const textureSize = 64;
-
-  let lastTime = performance.now();
-  let scanlineOn = true;
-  let runOn = true;
-  let lookDragId = null;
-  let lookLastX = 0;
-  let joyId = null;
-  let msgTimer = 0;
+  const scanBtn = document.getElementById('scanBtn');
+  const qualityBtn = document.getElementById('qualityBtn');
+  const hintEl = document.getElementById('hint');
+  const actBtn = document.getElementById('actBtn');
+  const pad = document.getElementById('pad');
+  const stick = document.getElementById('stick');
+  const app = document.getElementById('app');
 
   const state = {
-    x: 15.55,
-    y: 23.45,
-    angle: -1.56,
-    horizon: 0,
+    x: 14.5,
+    y: 25.4,
+    angle: -1.58,
     joyX: 0,
     joyY: 0,
-    interactText: '歩くだけで夏の湿度が出るマップを目指して再構築。',
+    run: false,
+    scanline: true,
+    quality: 'mid',
+    messageUntil: 0,
+    hint: 'コンビニ前スタート。重さを抑えつつ、立体感と街の密度を戻した版です。',
   };
 
-  const textures = {};
-  const spriteTextures = {};
+  const qualityPresets = {
+    low: { w: 180, h: 320, floorStepX: 2, floorStepY: 3, maxDist: 18 },
+    mid: { w: 220, h: 392, floorStepX: 2, floorStepY: 2, maxDist: 20 },
+    high: { w: 260, h: 462, floorStepX: 1, floorStepY: 2, maxDist: 22 },
+  };
 
-  const MAP_W = 29;
-  const MAP_H = 28;
-  // 0 empty, 1 store exterior, 2 shelf/interior wall, 3 houses, 4 shrine/storehouse, 5 closed shop, 6 hedge/block
-  const map = [
-    [3,3,3,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [3,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [3,0,0,0,0,3,0,0,6,6,6,0,0,0,0,0,0,0,0,4,4,4,0,0,0,0,0,0,0],
-    [3,0,0,0,0,3,0,0,6,0,6,0,0,0,0,0,0,0,0,4,0,4,0,0,0,0,0,0,0],
-    [3,3,3,0,3,3,0,0,6,0,6,0,0,0,0,0,0,0,0,4,0,4,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,4,0,4,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,4,4,4,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,5,5,5,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,5,0,5,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,5,0,5,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,5,5,5,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,2,2,2,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,2,0,2,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,2,0,2,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,6,6,6,0,0,0,1,1,1,2,2,2,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-  ];
+  let renderW = 220;
+  let renderH = 392;
+  let floorStepX = 2;
+  let floorStepY = 2;
+  let MAX_DIST = 20;
+  let HALF_FOV = Math.PI / 6.2;
+  let FOV = HALF_FOV * 2;
+  let horizonBase = 170;
+  let zBuffer = new Float32Array(renderW);
+  let wallTop = new Int16Array(renderW);
+  let wallBottom = new Int16Array(renderW);
+  let lastFrame = 0;
+  let fpsStep = 1000 / 30;
+  let lookId = null;
+  let lookLastX = 0;
+  let joyId = null;
 
-  // area ids for floor texture selection
-  // 0 asphalt/road, 1 store tile, 2 grass, 3 concrete/parking, 4 dirt path
-  const floorMap = Array.from({ length: MAP_H }, (_, y) => Array.from({ length: MAP_W }, (_, x) => {
-    if (y < 8 && x < 6) return 2;
-    if (x >= 14 && x <= 19 && y >= 15 && y <= 22) return 1;
-    if (x >= 6 && x <= 11 && y >= 2 && y <= 22) return 4;
-    if (y >= 15 && y <= 22 && x >= 12 && x <= 16) return 3;
-    if (y >= 7 && y <= 10 && x >= 23 && x <= 25) return 3;
-    if (x <= 7 || x >= 20) return 2;
-    return 0;
-  }));
+  const off = document.createElement('canvas');
+  const offCtx = off.getContext('2d', { alpha: false, desynchronized: true });
+  offCtx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = true;
 
-  const hotspots = [
-    { x: 15.4, y: 18.3, text: '商店の入口。白い蛍光灯が周囲より少しだけ安心感を作る。' },
-    { x: 18.1, y: 20.4, text: '棚。まだストーリーは入れていないので、今は内装の密度確認用。' },
-    { x: 10.2, y: 12.2, text: '掲示板。町内会の貼り紙や夏祭りの名残がある想定。' },
-    { x: 20.3, y: 6.2, text: '祠方向。歩きたくなる分岐スポットとして配置。' },
-    { x: 24.1, y: 9.2, text: '閉店した駄菓子屋。夜だと看板だけ見える。' },
-    { x: 7.2, y: 18.2, text: '電話ボックス。生活感と少しの不穏さを足すスポット。' },
-    { x: 11.2, y: 21.5, text: '小橋と側溝。田舎道の密度を出すための要素。' },
-  ];
-
-  const sprites = [
-    { x: 14.5, y: 15.1, tex: 'storeSign', scale: 1.8, yOffset: 0.95 },
-    { x: 16.1, y: 15.15, tex: 'lampPost', scale: 1.7, yOffset: 1.35 },
-    { x: 12.8, y: 19.0, tex: 'vending', scale: 1.15, yOffset: 0.75 },
-    { x: 10.3, y: 12.0, tex: 'board', scale: 1.15, yOffset: 0.78 },
-    { x: 7.2, y: 18.2, tex: 'phone', scale: 1.05, yOffset: 0.88 },
-    { x: 11.1, y: 21.45, tex: 'bridgeRail', scale: 1.2, yOffset: 0.55 },
-    { x: 20.5, y: 6.3, tex: 'shrineLantern', scale: 1.2, yOffset: 0.74 },
-    { x: 24.0, y: 8.7, tex: 'closedShopSign', scale: 1.4, yOffset: 0.86 },
-    { x: 21.9, y: 18.5, tex: 'busStop', scale: 1.2, yOffset: 0.82 },
-    { x: 12.0, y: 17.2, tex: 'car', scale: 1.55, yOffset: 0.68 },
-    { x: 9.1, y: 16.0, tex: 'mirror', scale: 1.0, yOffset: 1.15 },
-    { x: 22.1, y: 20.8, tex: 'tree', scale: 1.9, yOffset: 1.25 },
-    { x: 5.9, y: 10.0, tex: 'houseLife', scale: 1.35, yOffset: 0.64 },
-    { x: 3.7, y: 3.8, tex: 'houseLife', scale: 1.35, yOffset: 0.64 },
-    { x: 5.4, y: 3.0, tex: 'tree', scale: 1.6, yOffset: 1.2 },
-    { x: 17.1, y: 18.2, tex: 'aisle', scale: 1.0, yOffset: 0.72 },
-    { x: 18.9, y: 18.2, tex: 'aisle', scale: 1.0, yOffset: 0.72 },
-    { x: 17.1, y: 20.2, tex: 'aisle', scale: 1.0, yOffset: 0.72 },
-    { x: 18.9, y: 20.2, tex: 'aisle', scale: 1.0, yOffset: 0.72 },
-    { x: 15.2, y: 17.1, tex: 'counter', scale: 1.35, yOffset: 0.78 },
-    { x: 15.8, y: 16.4, tex: 'clock', scale: 0.72, yOffset: 1.48 },
-    { x: 15.1, y: 20.8, tex: 'doorFrame', scale: 1.18, yOffset: 1.05 },
-  ];
-
-  function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
-  function wrapAngle(a) {
-    while (a < -Math.PI) a += Math.PI * 2;
-    while (a > Math.PI) a -= Math.PI * 2;
-    return a;
-  }
-  function dist2(ax, ay, bx, by) {
-    const dx = ax - bx;
-    const dy = ay - by;
-    return dx * dx + dy * dy;
+  function setRenderQuality(name) {
+    state.quality = name;
+    const p = qualityPresets[name];
+    renderW = p.w;
+    renderH = p.h;
+    floorStepX = p.floorStepX;
+    floorStepY = p.floorStepY;
+    MAX_DIST = p.maxDist;
+    off.width = renderW;
+    off.height = renderH;
+    zBuffer = new Float32Array(renderW);
+    wallTop = new Int16Array(renderW);
+    wallBottom = new Int16Array(renderW);
+    qualityBtn.textContent = `QUALITY: ${name.toUpperCase()}`;
   }
 
-  function makeCanvas(w = textureSize, h = textureSize) {
+  function resizeVisible() {
+    canvas.width = Math.floor(window.innerWidth * devicePixelRatio);
+    canvas.height = Math.floor(window.innerHeight * devicePixelRatio);
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  }
+
+  window.addEventListener('resize', () => {
+    resizeVisible();
+    if (window.innerWidth < 390) setRenderQuality('low');
+    else setRenderQuality(state.quality);
+  });
+
+  if (window.innerWidth < 390) setRenderQuality('low');
+  else setRenderQuality('mid');
+  resizeVisible();
+
+  const TEX = {};
+  const SPR = {};
+
+  function texCanvas(w = 64, h = 64) {
     const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
+    c.width = w; c.height = h;
     return c;
   }
-
-  function paintTexture(name, painter, w = textureSize, h = textureSize) {
-    const c = makeCanvas(w, h);
+  function buildTex(name, painter, w = 64, h = 64) {
+    const c = texCanvas(w, h);
     const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
+    g.imageSmoothingEnabled = true;
     painter(g, w, h);
-    textures[name] = c;
+    TEX[name] = c;
+  }
+  function buildSpr(name, painter, w = 64, h = 96) {
+    const c = texCanvas(w, h);
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    painter(g, w, h);
+    SPR[name] = c;
   }
 
-  function paintSprite(name, painter, w = 64, h = 96) {
-    const c = makeCanvas(w, h);
-    const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    painter(g, w, h);
-    spriteTextures[name] = c;
-  }
-
-  function addGrain(g, w, h, alpha = 0.08) {
-    for (let i = 0; i < 180; i++) {
-      const x = Math.random() * w;
-      const y = Math.random() * h;
-      const a = Math.random() * alpha;
-      g.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
-      g.fillRect(x, y, 1, 1);
+  function grain(g, w, h, alpha = 0.08, count = 180) {
+    for (let i = 0; i < count; i++) {
+      const c = 150 + Math.random() * 90 | 0;
+      g.fillStyle = `rgba(${c},${c},${c},${Math.random() * alpha})`;
+      g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
     }
   }
 
-  function buildTextures() {
-    paintTexture('store', (g, w, h) => {
-      g.fillStyle = '#c8c2b6'; g.fillRect(0, 0, w, h);
-      for (let x = 0; x < w; x += 12) {
-        g.fillStyle = x % 24 === 0 ? '#b5aea2' : '#d7d1c6';
-        g.fillRect(x, 0, 7, h);
+  buildTex('store', (g, w, h) => {
+    const wall = g.createLinearGradient(0, 0, 0, h);
+    wall.addColorStop(0, '#d7d0c3');
+    wall.addColorStop(1, '#b3ab9f');
+    g.fillStyle = wall; g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 10) {
+      g.fillStyle = x % 20 ? '#d8d1c5' : '#bdb4a8';
+      g.fillRect(x, 0, 6, h);
+    }
+    g.fillStyle = '#1cbe88'; g.fillRect(0, 8, w, 5);
+    g.fillStyle = '#c34d48'; g.fillRect(0, 14, w, 3);
+    g.fillStyle = '#f4f3ef'; g.fillRect(4, 24, 16, 22);
+    g.fillStyle = '#cad9ea'; g.fillRect(6, 26, 12, 18);
+    g.fillStyle = '#f4f3ef'; g.fillRect(w - 20, 24, 16, 22);
+    g.fillStyle = '#cbd9ec'; g.fillRect(w - 18, 26, 12, 18);
+    g.fillStyle = '#222830'; g.fillRect(w / 2 - 10, 20, 20, h - 20);
+    g.fillStyle = '#0f141b'; g.fillRect(w / 2 - 7, 20, 14, h - 20);
+    grain(g, w, h, 0.05, 130);
+  });
+
+  buildTex('house', (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#d8cdbd'); grad.addColorStop(1, '#b59f89');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 8) {
+      g.fillStyle = x % 16 ? '#d3c8b8' : '#b39f8c';
+      g.fillRect(x, 0, 5, h);
+    }
+    g.fillStyle = '#6f6257'; g.fillRect(0, 0, w, 9);
+    g.fillStyle = '#7f725f'; g.fillRect(6, 24, 18, 28);
+    g.fillStyle = '#f0efe8'; g.fillRect(10, 28, 10, 18);
+    g.fillStyle = '#5a584f'; g.fillRect(36, 25, 18, 16);
+    g.fillStyle = '#f2f0ea'; g.fillRect(39, 28, 12, 10);
+    grain(g, w, h, 0.03, 120);
+  });
+
+  buildTex('wallpaper', (g, w, h) => {
+    g.fillStyle = '#d7cfbf'; g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 9) {
+      g.fillStyle = x % 18 ? '#c6bba8' : '#b4a792';
+      g.fillRect(x, 0, 5, h);
+    }
+    g.fillStyle = 'rgba(90,70,45,.08)';
+    for (let y = 0; y < h; y += 12) g.fillRect(0, y, w, 1);
+    grain(g, w, h, 0.02, 90);
+  });
+
+  buildTex('fridge', (g, w, h) => {
+    g.fillStyle = '#e4eaef'; g.fillRect(0, 0, w, h);
+    for (let x = 8; x < w; x += 18) {
+      g.fillStyle = '#b7c4cf'; g.fillRect(x, 0, 2, h);
+    }
+    for (let y = 10; y < h; y += 16) {
+      g.fillStyle = '#ccd7e0'; g.fillRect(0, y, w, 2);
+      for (let x = 2; x < w; x += 10) {
+        g.fillStyle = ['#ffffff','#7fc7ff','#ff6a5a','#5bd48b','#d99bff'][(x + y) % 5];
+        g.fillRect(x, y + 2, 6, 8);
       }
-      g.fillStyle = '#1bba86'; g.fillRect(0, 8, w, 6);
-      g.fillStyle = '#bf4541'; g.fillRect(0, 15, w, 4);
-      g.fillStyle = '#f9f9f5'; g.fillRect(18, 0, 28, 18);
-      g.fillStyle = '#59be72'; g.fillRect(12, 10, 40, 16);
-      g.fillStyle = '#e4f4ea';
-      g.font = 'bold 8px sans-serif';
-      g.fillText('KOMOREBI', 15, 21);
-      g.fillStyle = '#3b3c46'; g.fillRect(24, 28, 16, 36);
-      g.fillStyle = '#0a0c14'; g.fillRect(26, 30, 12, 34);
-      g.fillStyle = '#d3e1f9'; g.fillRect(2, 30, 18, 28);
-      g.fillRect(44, 30, 18, 28);
-      addGrain(g, w, h, 0.04);
-    });
+    }
+    g.fillStyle = 'rgba(120, 150, 170, .14)'; g.fillRect(0, 0, w, h);
+  });
 
-    paintTexture('shelf', (g, w, h) => {
-      g.fillStyle = '#3b4254'; g.fillRect(0, 0, w, h);
-      for (let y = 4; y < h; y += 14) {
-        g.fillStyle = '#262c38'; g.fillRect(0, y, w, 2);
+  buildTex('shutter', (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#8d857b'); grad.addColorStop(1, '#69645d');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    for (let y = 4; y < h; y += 7) {
+      g.fillStyle = y % 14 ? '#807870' : '#9b9489';
+      g.fillRect(0, y, w, 3);
+    }
+  });
+
+  buildTex('hedge', (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#4a6b55'); grad.addColorStop(1, '#264032');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 300; i++) {
+      g.fillStyle = ['#58795f', '#6d8f72', '#39523f'][i % 3];
+      g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+    }
+  });
+
+  buildTex('asphalt', (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#4f535b'); grad.addColorStop(1, '#232731');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    grain(g, w, h, 0.12, 260);
+    g.strokeStyle = 'rgba(230,230,230,0.45)';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(8, 14); g.lineTo(22, 15); g.lineTo(39, 13); g.lineTo(58, 15);
+    g.stroke();
+  });
+
+  buildTex('tile', (g, w, h) => {
+    g.fillStyle = '#d8dce2'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#bcc5d0'; g.lineWidth = 1;
+    for (let x = 0; x <= w; x += 16) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+    for (let y = 0; y <= h; y += 16) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    grain(g, w, h, 0.03, 100);
+  });
+
+  buildTex('grass', (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#577749'); grad.addColorStop(1, '#213723');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 220; i++) {
+      g.fillStyle = ['#73975f','#436741','#89ac6e'][i % 3];
+      g.fillRect(Math.random() * w, Math.random() * h, 1, 4);
+    }
+  });
+
+  buildTex('concrete', (g, w, h) => {
+    g.fillStyle = '#868b8f'; g.fillRect(0, 0, w, h);
+    grain(g, w, h, 0.08, 180);
+    g.strokeStyle = 'rgba(50,50,50,.28)';
+    g.beginPath(); g.moveTo(4, 44); g.lineTo(18, 30); g.lineTo(36, 37); g.stroke();
+  });
+
+  buildTex('dirt', (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#847360'); grad.addColorStop(1, '#473c31');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    grain(g, w, h, 0.08, 170);
+  });
+
+  buildSpr('sign', (g, w, h) => {
+    g.fillStyle = '#53bc74'; g.fillRect(4, 18, w - 8, 28);
+    g.fillStyle = '#ebf8ee';
+    g.font = 'bold 16px sans-serif';
+    g.fillText('こもれびマート', 14, 36);
+  }, 150, 64);
+
+  buildSpr('pole', (g, w, h) => {
+    g.fillStyle = '#3b3f45'; g.fillRect(34, 0, 6, h - 8);
+    g.fillRect(36, 20, 28, 3);
+    g.strokeStyle = '#2a2d31'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(40, 18); g.lineTo(82, 5); g.stroke();
+    g.fillStyle = '#fff0bb'; g.fillRect(60, 14, 18, 10);
+    g.fillStyle = 'rgba(255,227,168,.18)'; g.beginPath(); g.arc(69, 19, 22, 0, Math.PI * 2); g.fill();
+  }, 96, 132);
+
+  buildSpr('vending', (g, w, h) => {
+    g.fillStyle = '#eaf1ff'; g.fillRect(10, 6, 44, 82);
+    g.fillStyle = '#a9c7ff'; g.fillRect(14, 12, 36, 28);
+    g.fillStyle = '#ffffff'; g.fillRect(15, 44, 34, 18);
+    for (let i = 0; i < 5; i++) {
+      g.fillStyle = ['#ff6464','#ffe16f','#74c7ff','#89e283','#d899ff'][i];
+      g.fillRect(18 + i * 6, 48, 4, 10);
+    }
+    g.fillStyle = '#313a46'; g.fillRect(22, 67, 20, 8);
+    g.fillStyle = '#bcc5d0'; g.fillRect(20, 80, 24, 6);
+  });
+
+  buildSpr('board', (g, w, h) => {
+    g.fillStyle = '#7b654d'; g.fillRect(6, 18, w - 12, 8);
+    g.fillRect(12, 26, 8, 58); g.fillRect(w - 20, 26, 8, 58);
+    g.fillStyle = '#d9cbb3'; g.fillRect(10, 26, w - 20, 34);
+    g.fillStyle = '#977b5f'; g.fillRect(12, 28, w - 24, 30);
+    g.fillStyle = '#f2eadb'; g.fillRect(18, 33, 20, 10); g.fillRect(42, 40, 16, 8);
+  }, 74, 96);
+
+  buildSpr('phone', (g, w, h) => {
+    g.fillStyle = 'rgba(190,220,255,.2)'; g.fillRect(13, 12, 38, 74);
+    g.strokeStyle = '#d0e2ff'; g.lineWidth = 2; g.strokeRect(13, 12, 38, 74);
+    g.fillStyle = '#50647f'; g.fillRect(21, 30, 22, 22);
+    g.fillStyle = '#23324a'; g.fillRect(24, 34, 16, 14);
+    g.fillStyle = '#e4eefb'; g.fillRect(18, 10, 28, 8);
+  }, 64, 100);
+
+  buildSpr('bus', (g, w, h) => {
+    g.fillStyle = '#cadbf4'; g.fillRect(20, 6, 24, 16);
+    g.fillStyle = '#5f7087'; g.fillRect(18, 22, 4, 62); g.fillRect(42, 22, 4, 62);
+    g.fillStyle = '#8ca0ba'; g.fillRect(14, 54, 36, 8);
+  }, 64, 100);
+
+  buildSpr('car', (g, w, h) => {
+    g.fillStyle = '#e2e3e7'; g.fillRect(12, 30, 74, 28);
+    g.fillStyle = '#c4ccd7'; g.fillRect(28, 16, 40, 16);
+    g.fillStyle = '#9cafcb'; g.fillRect(32, 19, 14, 10); g.fillRect(50, 19, 14, 10);
+    g.fillStyle = '#23252a'; g.fillRect(22, 52, 14, 12); g.fillRect(60, 52, 14, 12);
+    g.fillStyle = '#f0dfa5'; g.fillRect(12, 36, 5, 6); g.fillStyle = '#e97b6f'; g.fillRect(81, 36, 5, 6);
+  }, 98, 72);
+
+  buildSpr('mirror', (g, w, h) => {
+    g.fillStyle = '#4c5b72'; g.fillRect(28, 18, 4, 70);
+    g.fillStyle = '#d05b2c'; g.beginPath(); g.arc(30, 16, 14, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#d6e4f4'; g.beginPath(); g.arc(30, 16, 10, 0, Math.PI * 2); g.fill();
+  }, 64, 100);
+
+  buildSpr('tree', (g, w, h) => {
+    g.fillStyle = '#5d4530'; g.fillRect(44, 52, 10, h - 56);
+    const blobs = [[49,32,22,'#395740'],[33,48,18,'#4d7158'],[65,50,18,'#2b4433'],[50,56,24,'#45654c']];
+    for (const [x,y,r,c] of blobs) { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); }
+  }, 100, 130);
+
+  buildSpr('life', (g, w, h) => {
+    g.fillStyle = '#c2b08a'; g.fillRect(8, 30, 18, 12);
+    g.fillStyle = '#888c94'; g.fillRect(30, 24, 16, 18);
+    g.fillStyle = '#acc0d9'; g.fillRect(44, 22, 7, 8);
+    g.fillStyle = '#4a8d48'; g.fillRect(52, 34, 12, 10);
+    g.fillStyle = '#82bb6d'; g.fillRect(54, 26, 8, 8);
+  }, 72, 56);
+
+  buildSpr('rack', (g, w, h) => {
+    g.fillStyle = '#343a49'; g.fillRect(10, 12, 48, 78);
+    g.fillStyle = '#2a2f3b'; g.fillRect(12, 14, 44, 74);
+    for (let y = 18; y < 82; y += 11) {
+      for (let x = 16; x < 50; x += 8) {
+        g.fillStyle = ['#ef7272','#efe07a','#7bc5ff','#b588e4','#92de9a'][(x + y) % 5];
+        g.fillRect(x, y, 6, 8);
       }
-      for (let y = 7; y < h; y += 14) {
-        for (let x = 2; x < w; x += 10) {
-          g.fillStyle = ['#e9d86c','#d04f4f','#6d89ef','#8ed19b','#c788e1'][((x+y) / 3) % 5 | 0];
-          g.fillRect(x, y, 6, 8 + ((x + y) % 3));
-        }
-      }
-      addGrain(g, w, h, 0.04);
-    });
+    }
+  }, 70, 100);
 
-    paintTexture('house', (g, w, h) => {
-      g.fillStyle = '#cfc6b5'; g.fillRect(0, 0, w, h);
-      for (let x = 0; x < w; x += 10) {
-        g.fillStyle = x % 20 === 0 ? '#b9af9f' : '#ddd4c6';
-        g.fillRect(x, 0, 7, h);
-      }
-      g.fillStyle = '#6e6659'; g.fillRect(0, 0, w, 10);
-      g.fillStyle = '#7f6f55'; g.fillRect(4, 24, 16, 22);
-      g.fillStyle = '#ebe9de'; g.fillRect(7, 28, 10, 16);
-      g.fillStyle = '#857b6d'; g.fillRect(36, 24, 18, 16);
-      g.fillStyle = '#f3f1eb'; g.fillRect(39, 27, 12, 10);
-      addGrain(g, w, h, 0.03);
-    });
+  buildSpr('counter', (g, w, h) => {
+    g.fillStyle = '#ccc7bd'; g.fillRect(4, 42, w - 8, 30);
+    g.fillStyle = '#958d82'; g.fillRect(4, 68, w - 8, 14);
+    g.fillStyle = '#242d3e'; g.fillRect(66, 16, 24, 28);
+    g.fillStyle = '#141b26'; g.fillRect(69, 19, 18, 22);
+    g.fillStyle = '#f4eee7'; g.fillRect(18, 29, 12, 18);
+    g.fillStyle = '#8daf68'; g.fillRect(18, 39, 12, 4); g.fillStyle = '#4b6c8a'; g.fillRect(18, 43, 12, 4);
+  }, 100, 90);
 
-    paintTexture('shrine', (g, w, h) => {
-      g.fillStyle = '#6d5845'; g.fillRect(0, 0, w, h);
-      g.fillStyle = '#574737'; g.fillRect(0, 0, w, 10);
-      for (let y = 10; y < h; y += 8) {
-        g.fillStyle = y % 16 === 0 ? '#836652' : '#705948';
-        g.fillRect(0, y, w, 6);
-      }
-      addGrain(g, w, h, 0.02);
-    });
+  buildSpr('clock', (g, w, h) => {
+    g.fillStyle = '#17212c'; g.fillRect(10, 10, 50, 24);
+    g.fillStyle = '#4df08d'; g.font = 'bold 18px monospace'; g.fillText('22:46', 14, 28);
+  }, 72, 48);
 
-    paintTexture('closedShop', (g, w, h) => {
-      g.fillStyle = '#988e80'; g.fillRect(0, 0, w, h);
-      g.fillStyle = '#584e46'; g.fillRect(0, 0, w, 12);
-      for (let x = 0; x < w; x += 6) {
-        g.fillStyle = x % 12 === 0 ? '#80786f' : '#a1998d';
-        g.fillRect(x, 18, 4, h - 18);
-      }
-      g.fillStyle = '#22242a'; g.fillRect(16, 18, 32, 36);
-      addGrain(g, w, h, 0.04);
-    });
+  buildSpr('bridge', (g, w, h) => {
+    g.fillStyle = '#72787e'; g.fillRect(0, 34, w, 10);
+    g.fillStyle = '#62676d'; for (let x = 6; x < w; x += 10) g.fillRect(x, 18, 4, 28);
+  }, 94, 60);
 
-    paintTexture('hedge', (g, w, h) => {
-      g.fillStyle = '#335241'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 320; i++) {
-        g.fillStyle = ['#416652','#587a61','#2f4c3f'][i % 3];
-        g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
-      }
-    });
+  buildSpr('closed', (g, w, h) => {
+    g.fillStyle = '#7b5d43'; g.fillRect(8, 14, w - 16, 18);
+    g.fillStyle = '#f0dfc7'; g.font = 'bold 10px sans-serif'; g.fillText('駄菓子', 22, 27);
+    g.fillStyle = '#5f564d'; g.fillRect(12, 34, w - 24, 42);
+  }, 94, 84);
 
-    paintTexture('asphalt', (g, w, h) => {
-      const grad = g.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#4f5157'); grad.addColorStop(1, '#242731');
-      g.fillStyle = grad; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 260; i++) {
-        const c = 30 + Math.random() * 50;
-        g.fillStyle = `rgba(${c},${c},${c},0.35)`;
-        g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
-      }
-      g.strokeStyle = 'rgba(230,230,230,0.55)';
-      g.lineWidth = 2;
-      g.beginPath();
-      g.moveTo(12, 12); g.lineTo(28, 14); g.lineTo(44, 12); g.stroke();
-    });
+  const MAP_W = 34;
+  const MAP_H = 34;
+  // 0 open 1 store 2 house 3 wallpaper interior 4 fridge 5 shrine/wood 6 shutter 7 hedge
+  const map = Array.from({ length: MAP_H }, () => Array(MAP_W).fill(0));
+  const floorMap = Array.from({ length: MAP_H }, () => Array(MAP_W).fill(0));
 
-    paintTexture('tile', (g, w, h) => {
-      g.fillStyle = '#d8dbe1'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#bcc2cf'; g.lineWidth = 1;
-      for (let x = 0; x < w; x += 16) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-      for (let y = 0; y < h; y += 16) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
-      addGrain(g, w, h, 0.03);
-    });
-
-    paintTexture('grass', (g, w, h) => {
-      const grad = g.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#4c6c43'); grad.addColorStop(1, '#1f3824');
-      g.fillStyle = grad; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 240; i++) {
-        g.fillStyle = ['#58794f','#7d985c','#375036'][i % 3];
-        const x = Math.random() * w;
-        const y = Math.random() * h;
-        g.fillRect(x, y, 1, 4);
-      }
-    });
-
-    paintTexture('concrete', (g, w, h) => {
-      g.fillStyle = '#7c7f84'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 220; i++) {
-        const c = 120 + Math.random() * 50;
-        g.fillStyle = `rgba(${c},${c},${c},0.2)`;
-        g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
-      }
-      g.strokeStyle = 'rgba(50,50,50,0.35)';
-      g.beginPath(); g.moveTo(5, 45); g.lineTo(18, 30); g.lineTo(30, 36); g.stroke();
-    });
-
-    paintTexture('dirt', (g, w, h) => {
-      const grad = g.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#7b705c'); grad.addColorStop(1, '#4a4035');
-      g.fillStyle = grad; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 200; i++) {
-        g.fillStyle = ['#655a4a','#8c806d','#3e342b'][i % 3];
-        g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
-      }
-    });
-
-    paintSprite('storeSign', (g, w, h) => {
-      g.fillStyle = '#56be75'; g.fillRect(4, 18, w - 8, 28);
-      g.fillStyle = '#dff7e7';
-      g.font = 'bold 10px sans-serif';
-      g.fillText('こもれびマート', 8, 36);
-    }, 128, 64);
-
-    paintSprite('lampPost', (g, w, h) => {
-      g.fillStyle = '#2b2f38'; g.fillRect(29, 10, 6, h - 18);
-      g.fillRect(30, 22, 20, 4);
-      g.fillStyle = '#fff5cc'; g.fillRect(46, 18, 18, 12);
-      g.fillStyle = 'rgba(255,238,170,0.18)'; g.beginPath(); g.arc(54, 26, 22, 0, Math.PI * 2); g.fill();
-    });
-
-    paintSprite('vending', (g, w, h) => {
-      g.fillStyle = '#d9e6ff'; g.fillRect(10, 8, 40, 74);
-      g.fillStyle = '#76a3ff'; g.fillRect(14, 14, 32, 30);
-      g.fillStyle = '#f4f6f8'; g.fillRect(14, 48, 32, 18);
-      for (let i = 0; i < 4; i++) {
-        g.fillStyle = ['#ff5959','#ffe06e','#71c4ff','#9ded90'][i];
-        g.fillRect(18 + i * 6, 52, 4, 10);
-      }
-      g.fillStyle = '#2e374a'; g.fillRect(18, 68, 24, 6);
-      g.fillStyle = '#a6b8d4'; g.fillRect(16, 78, 28, 6);
-    });
-
-    paintSprite('board', (g, w, h) => {
-      g.fillStyle = '#72624d'; g.fillRect(4, 16, 56, 8);
-      g.fillRect(10, 24, 8, 56); g.fillRect(46, 24, 8, 56);
-      g.fillStyle = '#d3c7b2'; g.fillRect(8, 24, 48, 32);
-      g.fillStyle = '#917458'; g.fillRect(10, 26, 44, 28);
-      g.fillStyle = '#f1eadf'; g.fillRect(14, 30, 18, 10); g.fillRect(34, 34, 14, 8);
-    });
-
-    paintSprite('phone', (g, w, h) => {
-      g.fillStyle = 'rgba(194, 224, 255, 0.25)'; g.fillRect(12, 12, 40, 70);
-      g.strokeStyle = '#d3e6ff'; g.lineWidth = 2; g.strokeRect(12, 12, 40, 70);
-      g.fillStyle = '#4a5d7a'; g.fillRect(22, 28, 20, 20);
-      g.fillStyle = '#26364d'; g.fillRect(25, 32, 14, 12);
-      g.fillStyle = '#dce7f5'; g.fillRect(18, 10, 28, 8);
-    });
-
-    paintSprite('bridgeRail', (g, w, h) => {
-      g.fillStyle = '#6a6f75'; g.fillRect(0, 42, w, 8);
-      g.fillStyle = '#5b6066';
-      for (let x = 4; x < w; x += 10) g.fillRect(x, 24, 4, 32);
-    }, 88, 64);
-
-    paintSprite('shrineLantern', (g, w, h) => {
-      g.fillStyle = '#5e4a37'; g.fillRect(28, 38, 8, 44);
-      g.fillStyle = '#f2d79d'; g.fillRect(16, 18, 32, 24);
-      g.fillStyle = '#8a3f32'; g.fillRect(16, 14, 32, 4); g.fillRect(16, 42, 32, 4);
-      g.fillStyle = 'rgba(246, 217, 146, 0.18)'; g.beginPath(); g.arc(32, 30, 28, 0, Math.PI * 2); g.fill();
-    });
-
-    paintSprite('closedShopSign', (g, w, h) => {
-      g.fillStyle = '#7a5c42'; g.fillRect(6, 12, w - 12, 20);
-      g.fillStyle = '#ecdec5'; g.font = 'bold 9px sans-serif'; g.fillText('駄菓子', 18, 26);
-      g.fillStyle = '#564c45'; g.fillRect(12, 34, w - 24, 36);
-    }, 92, 80);
-
-    paintSprite('busStop', (g, w, h) => {
-      g.fillStyle = '#6d7f93'; g.fillRect(14, 18, 36, 6);
-      g.fillStyle = '#cfe2ff'; g.fillRect(18, 4, 28, 18);
-      g.fillStyle = '#39465a'; g.fillRect(22, 24, 4, 58); g.fillRect(38, 24, 4, 58);
-      g.fillStyle = '#8ba0bb'; g.fillRect(14, 52, 36, 8);
-    });
-
-    paintSprite('car', (g, w, h) => {
-      g.fillStyle = '#d8d9de'; g.fillRect(10, 28, 68, 26);
-      g.fillStyle = '#bcc3ce'; g.fillRect(24, 16, 40, 16);
-      g.fillStyle = '#8fa2bf'; g.fillRect(28, 18, 14, 12); g.fillRect(44, 18, 14, 12);
-      g.fillStyle = '#23242b'; g.fillRect(20, 50, 14, 12); g.fillRect(54, 50, 14, 12);
-      g.fillStyle = '#f1e1a8'; g.fillRect(10, 34, 6, 6);
-      g.fillStyle = '#e26758'; g.fillRect(72, 34, 6, 6);
-    }, 88, 72);
-
-    paintSprite('mirror', (g, w, h) => {
-      g.fillStyle = '#4f5b6d'; g.fillRect(28, 18, 4, 64);
-      g.fillStyle = '#cf612f'; g.beginPath(); g.arc(28, 16, 14, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#cdddf2'; g.beginPath(); g.arc(28, 16, 10, 0, Math.PI * 2); g.fill();
-    });
-
-    paintSprite('tree', (g, w, h) => {
-      g.fillStyle = '#5d4530'; g.fillRect(28, 42, 8, 54);
-      for (const [x,y,r,c] of [[32,22,18,'#33553d'],[20,34,16,'#456c4f'],[44,35,18,'#294635'],[32,42,22,'#3f5e45']]) {
-        g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-      }
-    });
-
-    paintSprite('houseLife', (g, w, h) => {
-      g.fillStyle = '#bfae8d'; g.fillRect(12, 30, 16, 12);
-      g.fillStyle = '#7a7d82'; g.fillRect(32, 24, 16, 18);
-      g.fillStyle = '#b5c5db'; g.fillRect(46, 22, 6, 8);
-      g.fillStyle = '#4a8a4a'; g.fillRect(52, 34, 10, 10);
-      g.fillStyle = '#8bc173'; g.fillRect(54, 26, 6, 8);
-    }, 72, 56);
-
-    paintSprite('aisle', (g, w, h) => {
-      g.fillStyle = '#343a48'; g.fillRect(10, 18, 44, 64);
-      g.fillStyle = '#2a2f3b'; g.fillRect(12, 20, 40, 60);
-      for (let y = 24; y < 74; y += 10) {
-        for (let x = 16; x < 48; x += 8) {
-          g.fillStyle = ['#ef7272','#efe072','#7ec8ff','#bd88e8','#95df95'][(x + y) % 5];
-          g.fillRect(x, y, 6, 8);
-        }
-      }
-    }, 64, 96);
-
-    paintSprite('counter', (g, w, h) => {
-      g.fillStyle = '#c8c3b8'; g.fillRect(4, 40, w - 8, 26);
-      g.fillStyle = '#9c9689'; g.fillRect(4, 62, w - 8, 14);
-      g.fillStyle = '#273140'; g.fillRect(64, 18, 24, 30);
-      g.fillStyle = '#161c27'; g.fillRect(67, 21, 18, 24);
-      g.fillStyle = '#f7f1ea'; g.fillRect(20, 30, 12, 18);
-      g.fillStyle = '#9ab668'; g.fillRect(20, 40, 12, 4);
-      g.fillStyle = '#4a6987'; g.fillRect(20, 44, 12, 4);
-    }, 96, 88);
-
-    paintSprite('clock', (g, w, h) => {
-      g.fillStyle = '#1a232e'; g.fillRect(10, 10, 44, 26);
-      g.fillStyle = '#41ee8a'; g.font = 'bold 18px monospace'; g.fillText('22:46', 12, 29);
-    }, 64, 48);
-
-    paintSprite('doorFrame', (g, w, h) => {
-      g.fillStyle = '#d6d0c4'; g.fillRect(18, 4, 12, h - 8);
-      g.fillRect(52, 4, 12, h - 8);
-      g.fillRect(18, 4, 46, 10);
-      g.fillStyle = 'rgba(190, 210, 240, 0.18)'; g.fillRect(26, 20, 12, h - 24); g.fillRect(44, 20, 12, h - 24);
-    }, 82, 112);
+  function fillRectMap(x0, y0, x1, y1, v) {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) map[y][x] = v;
+  }
+  function fillFloor(x0, y0, x1, y1, v) {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) floorMap[y][x] = v;
   }
 
-  buildTextures();
+  // world floor layout
+  fillFloor(0,0,33,33,2);   // grass default
+  fillFloor(9,0,16,33,4);   // road/side path dirt shoulder
+  fillFloor(11,0,15,33,0);  // asphalt road center
+  fillFloor(13,18,22,29,3); // parking/concrete apron
+  fillFloor(16,19,21,28,1); // store tiles
+  fillFloor(6,20,10,28,3);  // side lot concrete
+  fillFloor(21,5,24,10,3);  // closed shop front
+  fillFloor(17,2,20,6,4);   // shrine path
+
+  // hedges
+  fillRectMap(8,1,8,14,7);
+  fillRectMap(17,0,17,8,7);
+
+  // homes left side
+  fillRectMap(1,2,5,6,2);
+  fillRectMap(1,9,5,13,2);
+  fillRectMap(1,18,5,23,2);
+
+  // store exterior shell
+  fillRectMap(16,19,21,19,1);
+  fillRectMap(16,28,21,28,1);
+  fillRectMap(16,19,16,28,1);
+  fillRectMap(21,19,21,28,1);
+  // door opening and windows are sprites/openings
+  map[18][16] = 0; map[18][21] = 0; // front apron left/right approach open
+  map[19][18] = 0; map[19][19] = 0; // front door opening not used but keeps center readable
+  map[20][18] = 0; map[20][19] = 0;
+  // interior walls and fixtures
+  fillRectMap(17,20,20,20,3); // back wallpaper wall
+  fillRectMap(17,21,17,27,4);
+  fillRectMap(20,21,20,27,4);
+  fillRectMap(18,23,19,23,3);
+  fillRectMap(18,25,19,25,3);
+
+  // closed shop / shuttered store
+  fillRectMap(22,6,25,9,6);
+  // shrine shed
+  fillRectMap(18,2,20,4,5);
+
+  const floorTexNames = ['asphalt','tile','grass','concrete','dirt'];
+
+  const sprites = [
+    { x: 18.5, y: 18.55, tex: 'sign', scale: 2.0, yOffset: 0.98 },
+    { x: 22.4, y: 18.6, tex: 'pole', scale: 1.6, yOffset: 1.35 },
+    { x: 12.4, y: 24.6, tex: 'vending', scale: 1.12, yOffset: 0.84 },
+    { x: 9.2, y: 18.6, tex: 'mirror', scale: 0.96, yOffset: 1.18 },
+    { x: 8.8, y: 20.8, tex: 'phone', scale: 1.05, yOffset: 0.92 },
+    { x: 10.8, y: 12.0, tex: 'board', scale: 1.12, yOffset: 0.82 },
+    { x: 22.6, y: 23.5, tex: 'bus', scale: 1.1, yOffset: 0.82 },
+    { x: 11.8, y: 26.4, tex: 'bridge', scale: 1.14, yOffset: 0.62 },
+    { x: 24.0, y: 6.2, tex: 'closed', scale: 1.2, yOffset: 0.88 },
+    { x: 7.4, y: 25.2, tex: 'car', scale: 1.38, yOffset: 0.75 },
+    { x: 5.8, y: 7.6, tex: 'tree', scale: 1.74, yOffset: 1.18 },
+    { x: 5.6, y: 15.0, tex: 'tree', scale: 1.6, yOffset: 1.14 },
+    { x: 4.6, y: 23.8, tex: 'life', scale: 1.3, yOffset: 0.62 },
+    { x: 5.2, y: 11.8, tex: 'life', scale: 1.28, yOffset: 0.62 },
+    { x: 19.0, y: 24.0, tex: 'counter', scale: 1.34, yOffset: 0.82 },
+    { x: 18.0, y: 22.1, tex: 'rack', scale: 1.02, yOffset: 0.82 },
+    { x: 19.0, y: 22.1, tex: 'rack', scale: 1.02, yOffset: 0.82 },
+    { x: 18.0, y: 26.1, tex: 'rack', scale: 1.02, yOffset: 0.82 },
+    { x: 19.0, y: 26.1, tex: 'rack', scale: 1.02, yOffset: 0.82 },
+    { x: 19.1, y: 20.7, tex: 'clock', scale: 0.78, yOffset: 1.56 },
+    { x: 21.7, y: 4.9, tex: 'tree', scale: 1.4, yOffset: 1.08 },
+  ];
+
+  const hotspots = [
+    { x: 18.6, y: 19.5, text: 'コンビニ入口。外の白い蛍光灯と中の壁紙で、参考画像の空気感に寄せる想定。' },
+    { x: 19.1, y: 24.2, text: 'レジ。窓際・時計・CRT方向の構図を後でさらに強化する前提。' },
+    { x: 18.1, y: 22.2, text: '冷蔵棚。今回は軽さ優先で密度を保った版。' },
+    { x: 10.8, y: 12.0, text: '掲示板。夏祭りや町内会の紙が貼られている想定。' },
+    { x: 21.8, y: 4.7, text: '祠方向。歩きたくなる奥スポットとして残している。' },
+    { x: 8.8, y: 20.8, text: '電話ボックス。生活感と不穏さの中間地点。' },
+    { x: 11.8, y: 26.4, text: '小橋と側溝。田舎道の密度を出すための見せ場。' },
+    { x: 24.0, y: 6.2, text: '閉店店舗。夜だけ看板がなんとなく見える配置。' },
+  ];
+
+  function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+  function wrapAngle(a) { while (a < -Math.PI) a += Math.PI * 2; while (a > Math.PI) a -= Math.PI * 2; return a; }
+  function dist2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return dx*dx + dy*dy; }
 
   function isBlocking(x, y) {
-    const mx = Math.floor(x);
-    const my = Math.floor(y);
+    const mx = Math.floor(x), my = Math.floor(y);
     if (mx < 0 || my < 0 || mx >= MAP_W || my >= MAP_H) return true;
     return map[my][mx] !== 0;
   }
 
-  function floorTextureIdAt(x, y) {
-    const mx = clamp(Math.floor(x), 0, MAP_W - 1);
-    const my = clamp(Math.floor(y), 0, MAP_H - 1);
-    return floorMap[my][mx];
-  }
-
-  const floorTextures = ['asphalt','tile','grass','concrete','dirt'];
-
-  function showMessage(text, ms = 1800) {
-    messageEl.textContent = text;
-    messageEl.classList.remove('hidden');
-    msgTimer = performance.now() + ms;
-  }
-
-  function updateMessage(now) {
-    if (msgTimer && now > msgTimer) {
-      messageEl.classList.add('hidden');
-      msgTimer = 0;
+  function wallTexture(tile) {
+    switch (tile) {
+      case 1: return TEX.store;
+      case 2: return TEX.house;
+      case 3: return TEX.wallpaper;
+      case 4: return TEX.fridge;
+      case 5: return TEX.house;
+      case 6: return TEX.shutter;
+      case 7: return TEX.hedge;
+      default: return TEX.house;
     }
   }
 
-  function handleInteract() {
+  function floorTextureAt(x, y) {
+    const mx = clamp(Math.floor(x), 0, MAP_W - 1);
+    const my = clamp(Math.floor(y), 0, MAP_H - 1);
+    return TEX[floorTexNames[floorMap[my][mx]]];
+  }
+
+  function showHint(text, ms = 1800) {
+    state.hint = text;
+    hintEl.textContent = text;
+    state.messageUntil = performance.now() + ms;
+  }
+
+  function refreshHint(now) {
+    if (state.messageUntil && now > state.messageUntil) {
+      state.messageUntil = 0;
+      hintEl.textContent = state.hint;
+    }
+  }
+
+  function interact() {
     let best = null;
-    let bestD = 1.25;
+    let bestD = 1.4;
     for (const h of hotspots) {
       const d = Math.sqrt(dist2(state.x, state.y, h.x, h.y));
       if (d < bestD) {
         const dir = Math.atan2(h.y - state.y, h.x - state.x);
         const diff = Math.abs(wrapAngle(dir - state.angle));
-        if (diff < 0.72) {
-          bestD = d;
-          best = h;
-        }
+        if (diff < 0.8) { bestD = d; best = h; }
       }
     }
-    if (best) {
-      showMessage(best.text, 2400);
-      state.interactText = best.text;
-    } else {
-      showMessage('今はイベント未実装。マップの歩き心地と構図を確認してください。', 1800);
-      state.interactText = '今はイベント未実装。マップの歩き心地と構図を確認してください。';
-    }
+    if (best) showHint(best.text, 2400);
+    else showHint('今はイベント未実装。歩きやすさ、軽さ、立体感、密度を確認してください。', 1600);
   }
 
   runBtn.addEventListener('click', () => {
-    runOn = !runOn;
-    runBtn.textContent = `走る: ${runOn ? 'ON' : 'OFF'}`;
-    runBtn.classList.toggle('on', runOn);
-    runBtn.classList.toggle('off', !runOn);
+    state.run = !state.run;
+    runBtn.classList.toggle('on', state.run);
+    runBtn.textContent = `走る: ${state.run ? 'ON' : 'OFF'}`;
   });
-
-  interactBtn.addEventListener('click', handleInteract);
-  scanlineBtn.addEventListener('click', () => {
-    scanlineOn = !scanlineOn;
-    scanlineBtn.textContent = `SCANLINE: ${scanlineOn ? 'ON' : 'OFF'}`;
+  scanBtn.addEventListener('click', () => {
+    state.scanline = !state.scanline;
+    scanBtn.textContent = `SCANLINE: ${state.scanline ? 'ON' : 'OFF'}`;
   });
+  qualityBtn.addEventListener('click', () => {
+    const next = state.quality === 'low' ? 'mid' : state.quality === 'mid' ? 'high' : 'low';
+    setRenderQuality(next);
+  });
+  actBtn.addEventListener('click', interact);
 
-  function resetJoystick() {
-    state.joyX = 0;
-    state.joyY = 0;
-    joyKnob.style.transform = 'translate(0px, 0px)';
+  function resetStick() {
+    state.joyX = 0; state.joyY = 0;
+    stick.style.transform = 'translate(0px, 0px)';
   }
-
-  function updateJoystick(clientX, clientY) {
-    const rect = joyBase.getBoundingClientRect();
+  function moveStick(clientX, clientY) {
+    const rect = pad.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    let dx = clientX - cx;
-    let dy = clientY - cy;
-    const maxR = rect.width * 0.34;
+    let dx = clientX - cx, dy = clientY - cy;
+    const maxR = rect.width * 0.33;
     const len = Math.hypot(dx, dy) || 1;
-    if (len > maxR) {
-      dx = dx / len * maxR;
-      dy = dy / len * maxR;
-    }
+    if (len > maxR) { dx = dx / len * maxR; dy = dy / len * maxR; }
     state.joyX = dx / maxR;
     state.joyY = dy / maxR;
-    joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+    stick.style.transform = `translate(${dx}px, ${dy}px)`;
   }
 
-  joyBase.addEventListener('pointerdown', (e) => {
-    joyId = e.pointerId;
-    joyBase.setPointerCapture(e.pointerId);
-    updateJoystick(e.clientX, e.clientY);
+  pad.addEventListener('pointerdown', (e) => {
+    joyId = e.pointerId; pad.setPointerCapture(e.pointerId); moveStick(e.clientX, e.clientY);
   });
-  joyBase.addEventListener('pointermove', (e) => {
-    if (e.pointerId === joyId) updateJoystick(e.clientX, e.clientY);
-  });
-  joyBase.addEventListener('pointerup', (e) => {
-    if (e.pointerId === joyId) {
-      joyId = null;
-      resetJoystick();
-    }
-  });
-  joyBase.addEventListener('pointercancel', () => {
-    joyId = null;
-    resetJoystick();
-  });
+  pad.addEventListener('pointermove', (e) => { if (e.pointerId === joyId) moveStick(e.clientX, e.clientY); });
+  pad.addEventListener('pointerup', (e) => { if (e.pointerId === joyId) { joyId = null; resetStick(); } });
+  pad.addEventListener('pointercancel', () => { joyId = null; resetStick(); });
 
-  const app = document.getElementById('app');
   app.addEventListener('pointerdown', (e) => {
-    const half = window.innerWidth * 0.42;
-    if (e.clientX > half && !e.target.closest('#joystickBase') && !e.target.closest('button')) {
-      lookDragId = e.pointerId;
-      lookLastX = e.clientX;
-      app.setPointerCapture(e.pointerId);
+    const rightHalf = window.innerWidth * 0.44;
+    if (e.clientX > rightHalf && !e.target.closest('#pad') && !e.target.closest('button')) {
+      lookId = e.pointerId; lookLastX = e.clientX; app.setPointerCapture(e.pointerId);
     }
   });
   app.addEventListener('pointermove', (e) => {
-    if (e.pointerId === lookDragId) {
+    if (e.pointerId === lookId) {
       const dx = e.clientX - lookLastX;
       lookLastX = e.clientX;
-      state.angle = wrapAngle(state.angle + dx * ROT_SPEED);
+      state.angle = wrapAngle(state.angle + dx * 0.0027);
     }
   });
-  app.addEventListener('pointerup', (e) => {
-    if (e.pointerId === lookDragId) lookDragId = null;
-  });
-  app.addEventListener('pointercancel', (e) => {
-    if (e.pointerId === lookDragId) lookDragId = null;
-  });
+  app.addEventListener('pointerup', (e) => { if (e.pointerId === lookId) lookId = null; });
+  app.addEventListener('pointercancel', (e) => { if (e.pointerId === lookId) lookId = null; });
 
   function castRay(rayAngle) {
-    const sin = Math.sin(rayAngle);
-    const cos = Math.cos(rayAngle);
-    let mapX = Math.floor(state.x);
-    let mapY = Math.floor(state.y);
+    const sin = Math.sin(rayAngle), cos = Math.cos(rayAngle);
+    let mapX = Math.floor(state.x), mapY = Math.floor(state.y);
+    const deltaX = Math.abs(1 / (cos || 1e-6));
+    const deltaY = Math.abs(1 / (sin || 1e-6));
+    let stepX, stepY, sideX, sideY;
+    if (cos < 0) { stepX = -1; sideX = (state.x - mapX) * deltaX; }
+    else { stepX = 1; sideX = (mapX + 1 - state.x) * deltaX; }
+    if (sin < 0) { stepY = -1; sideY = (state.y - mapY) * deltaY; }
+    else { stepY = 1; sideY = (mapY + 1 - state.y) * deltaY; }
 
-    const deltaDistX = Math.abs(1 / (cos || 1e-6));
-    const deltaDistY = Math.abs(1 / (sin || 1e-6));
-
-    let stepX, stepY, sideDistX, sideDistY;
-    if (cos < 0) {
-      stepX = -1;
-      sideDistX = (state.x - mapX) * deltaDistX;
-    } else {
-      stepX = 1;
-      sideDistX = (mapX + 1.0 - state.x) * deltaDistX;
-    }
-    if (sin < 0) {
-      stepY = -1;
-      sideDistY = (state.y - mapY) * deltaDistY;
-    } else {
-      stepY = 1;
-      sideDistY = (mapY + 1.0 - state.y) * deltaDistY;
-    }
-
-    let hit = 0;
-    let side = 0;
+    let hit = 0, side = 0;
     while (!hit) {
-      if (sideDistX < sideDistY) {
-        sideDistX += deltaDistX;
-        mapX += stepX;
-        side = 0;
-      } else {
-        sideDistY += deltaDistY;
-        mapY += stepY;
-        side = 1;
-      }
-      if (mapX < 0 || mapX >= MAP_W || mapY < 0 || mapY >= MAP_H) {
-        return { dist: MAX_DIST, texId: 0, texX: 0, side: 0, mapX: 0, mapY: 0 };
-      }
-      if (map[mapY][mapX] > 0) hit = map[mapY][mapX];
+      if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
+      else { sideY += deltaY; mapY += stepY; side = 1; }
+      if (mapX < 0 || mapY < 0 || mapX >= MAP_W || mapY >= MAP_H) return { dist: MAX_DIST, texId: 0, texX: 0, side: 0 };
+      hit = map[mapY][mapX];
     }
-
-    let perpDist;
-    if (side === 0) perpDist = (mapX - state.x + (1 - stepX) / 2) / (cos || 1e-6);
-    else perpDist = (mapY - state.y + (1 - stepY) / 2) / (sin || 1e-6);
-
-    let wallX;
-    if (side === 0) wallX = state.y + perpDist * sin;
-    else wallX = state.x + perpDist * cos;
+    const perp = side === 0 ? (mapX - state.x + (1 - stepX) / 2) / (cos || 1e-6) : (mapY - state.y + (1 - stepY) / 2) / (sin || 1e-6);
+    let wallX = side === 0 ? state.y + perp * sin : state.x + perp * cos;
     wallX -= Math.floor(wallX);
-
-    let texX = Math.floor(wallX * textureSize);
-    if (side === 0 && cos > 0) texX = textureSize - texX - 1;
-    if (side === 1 && sin < 0) texX = textureSize - texX - 1;
-
-    return { dist: Math.max(perpDist, 0.001), texId: hit, texX, side, mapX, mapY };
+    let texX = Math.floor(wallX * 64);
+    if (side === 0 && cos > 0) texX = 63 - texX;
+    if (side === 1 && sin < 0) texX = 63 - texX;
+    return { dist: Math.max(0.001, perp), texId: hit, texX, side };
   }
 
-  function getWallTexture(tile) {
-    switch (tile) {
-      case 1: return textures.store;
-      case 2: return textures.shelf;
-      case 3: return textures.house;
-      case 4: return textures.shrine;
-      case 5: return textures.closedShop;
-      case 6: return textures.hedge;
-      default: return textures.house;
-    }
-  }
+  function drawSky(g) {
+    const grad = g.createLinearGradient(0, 0, 0, renderH);
+    grad.addColorStop(0, '#0f2a61');
+    grad.addColorStop(0.24, '#102653');
+    grad.addColorStop(0.54, '#162037');
+    grad.addColorStop(1, '#10151c');
+    g.fillStyle = grad; g.fillRect(0, 0, renderW, renderH);
 
-  function drawSky() {
-    const grad = ctx.createLinearGradient(0, 0, 0, baseH);
-    grad.addColorStop(0, '#0d2b5d');
-    grad.addColorStop(0.24, '#0a2450');
-    grad.addColorStop(0.48, '#15203c');
-    grad.addColorStop(1, '#11161f');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, baseW, baseH);
+    g.fillStyle = 'rgba(255, 155, 74, .1)';
+    g.beginPath(); g.arc(renderW * 0.62, 64, 54, 0, Math.PI * 2); g.fill();
 
-    // distant orange sun glow / humid dusk
-    ctx.fillStyle = 'rgba(255, 150, 70, 0.12)';
-    ctx.beginPath();
-    ctx.arc(baseW * 0.62 + Math.sin(state.angle * 0.2) * 12, 108, 74, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = 'rgba(255,255,255,0.86)';
-    for (let i = 0; i < 30; i++) {
-      const x = (i * 97.3 + 23) % baseW;
-      const y = (i * 41.7 + 32) % 190;
-      ctx.fillRect(x, y, i % 3 === 0 ? 2 : 1, i % 3 === 0 ? 2 : 1);
+    g.fillStyle = 'rgba(255,255,255,.9)';
+    for (let i = 0; i < 22; i++) {
+      const x = (i * 43.7 + 17) % renderW;
+      const y = (i * 31.2 + 11) % 110;
+      g.fillRect(x, y, i % 3 === 0 ? 2 : 1, i % 3 === 0 ? 2 : 1);
     }
 
-    const horizon = horizonBase + state.horizon;
-    const parallax = state.angle * 32;
-
-    ctx.fillStyle = '#1b2231';
-    ctx.beginPath();
-    ctx.moveTo(0, horizon + 26);
-    for (let x = 0; x <= baseW + 40; x += 36) {
-      const xx = x - (parallax * 0.18 % 40);
-      const peak = Math.sin((x + parallax * 0.4) * 0.045) * 15;
-      ctx.lineTo(xx, horizon + 24 - peak - ((x % 108) === 0 ? 14 : 0));
+    const h = horizonBase;
+    const px = state.angle * 22;
+    g.fillStyle = '#202738';
+    g.beginPath();
+    g.moveTo(0, h + 18);
+    for (let x = 0; x <= renderW + 40; x += 30) {
+      const xx = x - (px * 0.18 % 34);
+      const peak = Math.sin((x + px * 0.4) * 0.06) * 11;
+      g.lineTo(xx, h + 14 - peak - ((x % 90) === 0 ? 12 : 0));
     }
-    ctx.lineTo(baseW, horizon + 52);
-    ctx.lineTo(0, horizon + 52);
-    ctx.closePath();
-    ctx.fill();
+    g.lineTo(renderW, h + 40); g.lineTo(0, h + 40); g.closePath(); g.fill();
 
-    ctx.fillStyle = '#2a3244';
-    for (let i = 0; i < 11; i++) {
-      const xx = ((i * 74 - parallax * 0.3) % (baseW + 90)) - 30;
-      const w = 20 + (i % 4) * 8;
-      const h = 18 + (i % 3) * 12;
-      ctx.fillRect(xx, horizon + 18 - h, w, h);
+    g.fillStyle = '#2d3344';
+    for (let i = 0; i < 8; i++) {
+      const xx = ((i * 52 - px * 0.28) % (renderW + 60)) - 20;
+      const w = 12 + (i % 4) * 7;
+      const hh = 14 + (i % 3) * 12;
+      g.fillRect(xx, h + 10 - hh, w, hh);
     }
 
-    // electric wires in sky
-    ctx.strokeStyle = 'rgba(30,30,32,0.8)';
-    ctx.lineWidth = 2;
+    g.strokeStyle = 'rgba(34, 34, 36, .82)';
+    g.lineWidth = 1.4;
     for (let i = 0; i < 3; i++) {
-      ctx.beginPath();
-      ctx.moveTo(-20, 118 + i * 8 + Math.sin(state.angle * 0.4 + i) * 2);
-      ctx.quadraticCurveTo(baseW * 0.45, 130 + i * 8 + Math.sin(state.angle * 0.3 + i) * 2, baseW + 20, 110 + i * 10);
-      ctx.stroke();
+      g.beginPath();
+      g.moveTo(-8, 78 + i * 7);
+      g.quadraticCurveTo(renderW * .45, 90 + i * 6, renderW + 10, 74 + i * 9);
+      g.stroke();
     }
   }
 
-  function drawFloorAndCeiling() {
-    const posZ = floorPlane * baseH;
-    const dirX = Math.cos(state.angle);
-    const dirY = Math.sin(state.angle);
-    const planeX = -dirY * Math.tan(HALF_FOV);
-    const planeY = dirX * Math.tan(HALF_FOV);
-    const horizon = horizonBase + state.horizon;
+  function drawFloor(g) {
+    const dirX = Math.cos(state.angle), dirY = Math.sin(state.angle);
+    const planeX = -dirY * Math.tan(HALF_FOV), planeY = dirX * Math.tan(HALF_FOV);
+    const posZ = 0.68 * renderH;
+    const h = horizonBase;
 
-    for (let y = horizon; y < baseH; y++) {
-      const p = y - horizon;
-      if (p === 0) continue;
-      const rowDist = (cameraHeight * posZ) / p;
+    for (let y = h; y < renderH; y += floorStepY) {
+      const p = y - h;
+      if (p <= 0) continue;
+      const rowDist = (0.56 * posZ) / p;
+      const ray0x = dirX - planeX, ray0y = dirY - planeY;
+      const ray1x = dirX + planeX, ray1y = dirY + planeY;
+      const stepX = rowDist * (ray1x - ray0x) / renderW;
+      const stepY = rowDist * (ray1y - ray0y) / renderW;
+      let floorX = state.x + rowDist * ray0x;
+      let floorY = state.y + rowDist * ray0y;
 
-      const rayDirX0 = dirX - planeX;
-      const rayDirY0 = dirY - planeY;
-      const rayDirX1 = dirX + planeX;
-      const rayDirY1 = dirY + planeY;
-
-      const stepX = rowDist * (rayDirX1 - rayDirX0) / baseW;
-      const stepY = rowDist * (rayDirY1 - rayDirY0) / baseW;
-
-      let floorX = state.x + rowDist * rayDirX0;
-      let floorY = state.y + rowDist * rayDirY0;
-
-      for (let x = 0; x < baseW; x++) {
-        const cellX = Math.floor(floorX);
-        const cellY = Math.floor(floorY);
+      for (let x = 0; x < renderW; x += floorStepX) {
+        const cellX = Math.floor(floorX), cellY = Math.floor(floorY);
         if (cellX >= 0 && cellY >= 0 && cellX < MAP_W && cellY < MAP_H) {
-          const texName = floorTextures[floorMap[cellY][cellX]];
-          const tex = textures[texName];
-          const tx = ((floorX - cellX) * textureSize) & (textureSize - 1);
-          const ty = ((floorY - cellY) * textureSize) & (textureSize - 1);
-          ctx.drawImage(tex, tx, ty, 1, 1, x, y, 1, 1);
-          // dim by distance
-          const shade = clamp((rowDist - 1) / 16, 0, 0.72);
-          if (shade > 0.01) {
-            ctx.fillStyle = `rgba(4,8,16,${shade})`;
-            ctx.fillRect(x, y, 1, 1);
+          const tex = floorTextureAt(floorX, floorY);
+          const tx = ((floorX - cellX) * 64) & 63;
+          const ty = ((floorY - cellY) * 64) & 63;
+          g.drawImage(tex, tx, ty, 1, 1, x, y, floorStepX, floorStepY);
+          const shade = Math.min(0.76, Math.max(0, (rowDist - 1.2) / 16));
+          if (shade > .01) {
+            g.fillStyle = `rgba(6,10,18,${shade})`;
+            g.fillRect(x, y, floorStepX, floorStepY);
           }
         }
-        floorX += stepX;
-        floorY += stepY;
+        floorX += stepX * floorStepX;
+        floorY += stepY * floorStepX;
       }
     }
   }
 
-  function renderScene(now) {
-    drawSky();
-    drawFloorAndCeiling();
+  function renderFrame(now) {
+    drawSky(offCtx);
+    drawFloor(offCtx);
 
-    const zBuffer = new Float32Array(baseW);
-
-    for (let x = 0; x < baseW; x++) {
-      const cameraX = 2 * x / baseW - 1;
-      const rayAngle = state.angle + Math.atan(cameraX * Math.tan(HALF_FOV));
+    for (let x = 0; x < renderW; x++) {
+      const camX = 2 * x / renderW - 1;
+      const rayAngle = state.angle + Math.atan(camX * Math.tan(HALF_FOV));
       const ray = castRay(rayAngle);
       const corrected = ray.dist * Math.cos(rayAngle - state.angle);
       zBuffer[x] = corrected;
-      const lineH = Math.min(baseH * 1.5, (baseH / corrected));
-      const drawStart = Math.floor(baseH / 2 + state.horizon - lineH / 2);
-      const tex = getWallTexture(ray.texId);
-      const shade = clamp(corrected / MAX_DIST, 0, 1);
-
-      ctx.drawImage(tex, ray.texX, 0, 1, textureSize, x, drawStart, 1, lineH);
-      const wallShade = ray.side === 1 ? 0.12 : 0.05;
-      ctx.fillStyle = `rgba(8,12,20,${clamp(shade * 0.82 + wallShade, 0, 0.88)})`;
-      ctx.fillRect(x, drawStart, 1, lineH);
+      const lineH = Math.min(renderH * 1.3, renderH / corrected);
+      const start = Math.floor(renderH / 2 - lineH / 2);
+      const end = Math.floor(start + lineH);
+      wallTop[x] = start; wallBottom[x] = end;
+      const tex = wallTexture(ray.texId);
+      offCtx.drawImage(tex, ray.texX, 0, 1, 64, x, start, 1, lineH);
+      const shade = Math.min(.88, Math.max(0, corrected / MAX_DIST));
+      offCtx.fillStyle = `rgba(8,12,20,${shade * .72 + (ray.side ? .1 : .04)})`;
+      offCtx.fillRect(x, start, 1, lineH);
     }
 
-    const ordered = sprites.map((s, i) => ({ ...s, _d: dist2(state.x, state.y, s.x, s.y), _i: i }))
-      .sort((a, b) => b._d - a._d);
-
-    const dirX = Math.cos(state.angle);
-    const dirY = Math.sin(state.angle);
-    const planeX = -dirY * Math.tan(HALF_FOV);
-    const planeY = dirX * Math.tan(HALF_FOV);
+    const dirX = Math.cos(state.angle), dirY = Math.sin(state.angle);
+    const planeX = -dirY * Math.tan(HALF_FOV), planeY = dirX * Math.tan(HALF_FOV);
+    const ordered = sprites.map(s => ({ ...s, d: dist2(state.x, state.y, s.x, s.y) })).sort((a,b) => b.d - a.d);
 
     for (const s of ordered) {
-      const spriteX = s.x - state.x;
-      const spriteY = s.y - state.y;
-      const invDet = 1.0 / (planeX * dirY - dirX * planeY || 1e-6);
-      const transformX = invDet * (dirY * spriteX - dirX * spriteY);
-      const transformY = invDet * (-planeY * spriteX + planeX * spriteY);
-      if (transformY <= 0.08) continue;
+      const sx = s.x - state.x, sy = s.y - state.y;
+      const invDet = 1 / (planeX * dirY - dirX * planeY || 1e-6);
+      const tx = invDet * (dirY * sx - dirX * sy);
+      const ty = invDet * (-planeY * sx + planeX * sy);
+      if (ty <= 0.08 || ty > MAX_DIST) continue;
 
-      const tex = spriteTextures[s.tex];
-      const spriteScreenX = Math.floor((baseW / 2) * (1 + transformX / transformY));
-      const spriteH = Math.abs(Math.floor((baseH / transformY) * (s.scale || 1)));
-      const spriteW = Math.floor(spriteH * (tex.width / tex.height));
-      const drawStartY = Math.floor(baseH / 2 + state.horizon - spriteH + spriteH * (1 - (s.yOffset || 1)));
-      const drawEndY = drawStartY + spriteH;
-      const drawStartX = Math.floor(spriteScreenX - spriteW / 2);
-      const drawEndX = drawStartX + spriteW;
+      const img = SPR[s.tex];
+      const screenX = Math.floor((renderW / 2) * (1 + tx / ty));
+      const h = Math.abs(Math.floor((renderH / ty) * (s.scale || 1)));
+      const w = Math.floor(h * (img.width / img.height));
+      const startY = Math.floor(renderH / 2 - h + h * (1 - (s.yOffset || 1)));
+      const startX = Math.floor(screenX - w / 2);
+      const endX = startX + w;
 
-      for (let stripe = drawStartX; stripe < drawEndX; stripe++) {
-        if (stripe < 0 || stripe >= baseW || transformY >= zBuffer[stripe]) continue;
-        const texX = Math.floor((stripe - drawStartX) / spriteW * tex.width);
-        ctx.drawImage(tex, texX, 0, 1, tex.height, stripe, drawStartY, 1, spriteH);
-        const shade = clamp(transformY / MAX_DIST, 0, 0.88);
-        if (shade > 0.01) {
-          ctx.fillStyle = `rgba(8,12,20,${shade * 0.75})`;
-          ctx.fillRect(stripe, drawStartY, 1, spriteH);
-        }
+      for (let stripe = startX; stripe < endX; stripe++) {
+        if (stripe < 0 || stripe >= renderW || ty >= zBuffer[stripe]) continue;
+        const texX = Math.floor((stripe - startX) / w * img.width);
+        offCtx.drawImage(img, texX, 0, 1, img.height, stripe, startY, 1, h);
+        const shade = Math.min(0.84, ty / MAX_DIST);
+        offCtx.fillStyle = `rgba(8,12,20,${shade * .6})`;
+        offCtx.fillRect(stripe, startY, 1, h);
       }
     }
 
-    // parking lines and outdoor highlights overlay based on camera direction (subtle)
-    if (scanlineOn) {
-      ctx.fillStyle = 'rgba(255,255,255,0.045)';
-      for (let y = 0; y < baseH; y += 4) ctx.fillRect(0, y, baseW, 1);
+    if (state.scanline) {
+      offCtx.fillStyle = 'rgba(255,255,255,.045)';
+      for (let y = 0; y < renderH; y += 4) offCtx.fillRect(0, y, renderW, 1);
     }
 
-    ctx.fillStyle = 'rgba(255,255,255,0.03)';
-    for (let i = 0; i < 10; i++) {
-      const x = (i * 57 + now * 0.01) % baseW;
-      ctx.fillRect(x, (i * 43) % baseH, 1, 1);
-    }
+    const vw = window.innerWidth, vh = window.innerHeight;
+    ctx.clearRect(0, 0, vw, vh);
+    ctx.drawImage(off, 0, 0, vw, vh);
+
+    // subtle bloom-ish glows around bright shop area
+    ctx.fillStyle = 'rgba(255, 235, 190, .05)';
+    ctx.beginPath(); ctx.arc(vw * .55, vh * .33, vw * .1, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(120, 170, 255, .05)';
+    ctx.beginPath(); ctx.arc(vw * .17, vh * .8, vw * .13, 0, Math.PI * 2); ctx.fill();
   }
 
   function update(dt) {
-    let speed = MOVE_SPEED * (runOn ? RUN_MULT : 1);
     let forward = -state.joyY;
     let strafe = state.joyX;
-    if (Math.abs(forward) < 0.06) forward = 0;
-    if (Math.abs(strafe) < 0.06) strafe = 0;
+    if (Math.abs(forward) < .06) forward = 0;
+    if (Math.abs(strafe) < .06) strafe = 0;
 
-    let moveX = 0;
-    let moveY = 0;
+    const speed = (state.run ? 3.05 : 1.95) * dt;
     if (forward || strafe) {
-      const len = Math.hypot(strafe, forward) || 1;
-      strafe /= len;
-      forward /= len;
-      const cos = Math.cos(state.angle);
-      const sin = Math.sin(state.angle);
-      moveX = (cos * forward - sin * strafe) * speed * dt;
-      moveY = (sin * forward + cos * strafe) * speed * dt;
+      const len = Math.hypot(forward, strafe) || 1;
+      forward /= len; strafe /= len;
+      const cos = Math.cos(state.angle), sin = Math.sin(state.angle);
+      const moveX = (cos * forward - sin * strafe) * speed;
+      const moveY = (sin * forward + cos * strafe) * speed;
+      const r = 0.16;
+      const nx = state.x + moveX;
+      if (!isBlocking(nx + Math.sign(moveX || 1) * r, state.y) && !isBlocking(nx, state.y + r) && !isBlocking(nx, state.y - r)) state.x = nx;
+      const ny = state.y + moveY;
+      if (!isBlocking(state.x, ny + Math.sign(moveY || 1) * r) && !isBlocking(state.x + r, ny) && !isBlocking(state.x - r, ny)) state.y = ny;
     }
 
-    // collision with small radius and axis separation
-    const radius = 0.18;
-    const nx = state.x + moveX;
-    if (!isBlocking(nx + Math.sign(moveX) * radius, state.y) && !isBlocking(nx, state.y + radius) && !isBlocking(nx, state.y - radius)) {
-      state.x = nx;
-    }
-    const ny = state.y + moveY;
-    if (!isBlocking(state.x, ny + Math.sign(moveY) * radius) && !isBlocking(state.x + radius, ny) && !isBlocking(state.x - radius, ny)) {
-      state.y = ny;
-    }
-
-    // keep from drifting into walls from spawn weirdness
-    state.x = clamp(state.x, 1.2, MAP_W - 1.2);
-    state.y = clamp(state.y, 1.2, MAP_H - 1.2);
-
-    // automatic nearby hint refresh
-    let nearest = null;
-    let bestD = 99;
+    // nearest ambient hint refresh
+    let nearest = null, best = 999;
     for (const h of hotspots) {
       const d = dist2(state.x, state.y, h.x, h.y);
-      if (d < bestD) {
-        bestD = d;
-        nearest = h;
-      }
+      if (d < best) { best = d; nearest = h; }
     }
-    if (nearest && bestD < 3.0) {
-      state.interactText = nearest.text;
-    } else {
-      state.interactText = '道・店・民家・分岐の構図が気持ちいいかを確認してください。';
+    if (!state.messageUntil) {
+      if (nearest && best < 2.4) hintEl.textContent = nearest.text;
+      else hintEl.textContent = 'コンビニ前広場・民家・路地・分岐の歩き心地を確認してください。';
     }
   }
 
-  function animate(now) {
-    const dt = Math.min(0.033, (now - lastTime) / 1000);
-    lastTime = now;
+  function loop(now) {
+    if (now - lastFrame < fpsStep) { requestAnimationFrame(loop); return; }
+    const dt = Math.min(0.033, (now - lastFrame) / 1000 || 0.016);
+    lastFrame = now;
     update(dt);
-    renderScene(now);
-    updateMessage(now);
-    requestAnimationFrame(animate);
+    renderFrame(now);
+    refreshHint(now);
+    requestAnimationFrame(loop);
   }
 
-  // initial boot message
-  showMessage('開始位置は商店前通り。今度は最初から動ける版で組み直しています。', 2200);
-  requestAnimationFrame(animate);
+  showHint('コンビニ前スタート。重さを抑えつつ、立体感と街の密度を戻した版です。', 2200);
+  requestAnimationFrame(loop);
 })();
