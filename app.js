@@ -96,6 +96,14 @@ function hideToast() {
   toastEl.classList.remove('show');
 }
 
+function startGame() {
+  if (state.started) return;
+  state.started = true;
+  introCard.classList.add('hidden');
+  showToast('田舎町・商店前通りテスト開始。まずは自宅前からコンビニまで歩いてみる。', 2.8);
+  setHint('左で移動、右側ドラッグで視点移動。走るはON/OFF切替。まずは歩いて空気感を確認。');
+}
+
 function setHint(text) {
   hintEl.textContent = text;
 }
@@ -1637,11 +1645,22 @@ scanlineToggle.addEventListener('click', () => {
   scanlineToggle.textContent = `SCANLINE: ${state.scanlines ? 'ON' : 'OFF'}`;
 });
 
-startButton.addEventListener('click', () => {
-  state.started = true;
-  introCard.classList.add('hidden');
-  showToast('田舎町・商店前通りテスト開始。まずは自宅前からコンビニまで歩いてみる。', 2.8);
-  setHint('左で移動、右側ドラッグで視点移動。走るはON/OFF切替。まずは歩いて空気感を確認。');
+['click','pointerdown','touchend'].forEach((eventName) => {
+  startButton.addEventListener(eventName, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startGame();
+  }, { passive: false });
+});
+
+['click','pointerdown','touchend'].forEach((eventName) => {
+  introCard.addEventListener(eventName, (e) => {
+    const withinPanel = e.target && (e.target.closest?.('.intro-panel'));
+    if (!withinPanel || e.target === startButton || e.target.closest?.('#startButton')) {
+      e.preventDefault();
+      startGame();
+    }
+  }, { passive: false });
 });
 
 window.addEventListener('keydown', (e) => {

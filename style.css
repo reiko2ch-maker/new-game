@@ -46,10 +46,11 @@ body {
 }
 
 #overlay {
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .top-bar {
+  pointer-events: none;
   position: absolute;
   top: calc(10px + var(--safe-top));
   left: calc(12px + var(--safe-left));
@@ -61,6 +62,7 @@ body {
 }
 
 .title-wrap {
+  pointer-events: none;
   background: linear-gradient(180deg, rgba(8, 14, 24, 0.74), rgba(8, 14, 24, 0.22));
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -99,6 +101,7 @@ h1 {
   inset: 0;
   display: grid;
   place-items: center;
+  pointer-events: none;
 }
 
 #crosshair {
@@ -144,6 +147,7 @@ h1 {
 }
 
 .bottom-ui {
+  pointer-events: none;
   position: absolute;
   left: calc(14px + var(--safe-left));
   right: calc(14px + var(--safe-right));
@@ -156,6 +160,7 @@ h1 {
 
 .left-controls,
 .right-controls {
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -264,6 +269,7 @@ h1 {
 
 .intro-card {
   pointer-events: auto;
+  z-index: 20;
   position: absolute;
   inset: 0;
   display: grid;
@@ -277,6 +283,7 @@ h1 {
 }
 
 .intro-panel {
+  pointer-events: auto;
   width: min(90vw, 460px);
   padding: 22px 18px 20px;
   border-radius: 22px;
@@ -310,6 +317,8 @@ h1 {
 }
 
 .start-btn {
+  pointer-events: auto;
+  touch-action: manipulation;
   width: 100%;
   border: 0;
   border-radius: 18px;
@@ -351,6 +360,7 @@ h1 {
 
 @media (min-width: 760px) {
   .bottom-ui {
+  pointer-events: none;
     max-width: 700px;
     left: 50%;
     transform: translateX(-50%);
