@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-  <title>田舎町・商店前通り テストマップ</title>
-  <meta name="description" content="縦画面スマホ向け一人称ホラーマップ試作。歩いて気持ちいい田舎町の空気感と操作感をGitHub Pagesで確認できる。" />
+  <title>田舎町・商店前通り テストマップ v5</title>
+  <meta name="description" content="外部ライブラリなしの縦画面スマホ向け田舎町マップ検証版。" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -14,29 +14,27 @@
     <div id="overlay">
       <div class="top-bar">
         <div class="title-wrap">
-          <div class="eyebrow">縦画面スマホ向け / マップ検証プロトタイプ</div>
+          <div class="eyebrow">縦画面スマホ向け / 外部ライブラリなし</div>
           <h1>田舎町・商店前通り</h1>
         </div>
-        <button id="scanlineToggle" class="small-btn" type="button">SCANLINE: OFF</button>
+        <button id="scanlineToggle" class="small-btn" type="button">SCANLINE: ON</button>
       </div>
 
       <div class="center-ui">
         <div id="crosshair"></div>
-        <div id="interactionHint">夏の夕方の空気が少し湿っている。</div>
+        <div id="interactionHint">夏の地方道。まずは道とコンビニの気持ちよさを確認。</div>
       </div>
 
       <div class="bottom-ui">
         <div class="left-controls">
-          <div id="joystickBase" class="joystick-base">
-            <div id="joystickKnob" class="joystick-knob"></div>
-          </div>
+          <div id="joystickBase" class="joystick-base"><div id="joystickKnob" class="joystick-knob"></div></div>
           <div class="control-caption">移動</div>
         </div>
 
         <div class="right-controls">
           <button id="runButton" class="action-btn action-run" type="button">走る: OFF</button>
           <button id="interactButton" class="action-btn action-main" type="button">調べる</button>
-          <div class="control-caption right">右側をなぞると視点移動</div>
+          <div class="control-caption right">右半分をなぞると視点移動</div>
         </div>
       </div>
 
@@ -44,19 +42,19 @@
 
       <div id="introCard" class="intro-card">
         <div class="intro-panel">
-          <div class="intro-small">ストーリーなし / マップ優先版</div>
-          <h2>歩いて気持ちいい田舎町を先に作るテスト</h2>
+          <div class="intro-small">ストーリーなし / マップ優先版 / ローカル動作版</div>
+          <h2>歩いて気持ちいい田舎町を先に詰める</h2>
           <p>
-            まずは<strong>道・コンビニ・民家・電柱・路地・側溝・掲示板</strong>の空気感と、
-            <strong>縦画面スマホでの歩きやすさ</strong>を確認する版です。<br />
-            左下スティックで移動、右半分ドラッグで視点、右下で調べる。
+            前回止まっていた原因切り分けのため、<strong>外部CDNなし</strong>で動く構成に切り替えています。<br />
+            左下スティックで移動、右半分ドラッグで視点、走るは右下の<strong>ON/OFF切替</strong>です。
           </p>
           <ul>
-            <li>自宅前から商店前通りまで歩ける</li>
-            <li>コンビニ周辺・路地・生活感のある家並みを確認できる</li>
-            <li>GitHub Pagesにそのまま置ける構成</li>
+            <li>自宅前 → 細い生活道路 → コンビニ前広場 → 路地 → 神社側の見せ場</li>
+            <li>民家・掲示板・側溝・自販機・公衆電話・バス停・軽自動車・畑を配置</li>
+            <li>コンビニ内装は棚・レジ・冷蔵ケース・窓側の見え方を前版より強化</li>
           </ul>
           <button id="startButton" class="start-btn" type="button">テスト開始</button>
+          <div id="errorText" class="error-text"></div>
         </div>
       </div>
 
@@ -65,6 +63,6 @@
     </div>
   </div>
 
-  <script type="module" src="./app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
