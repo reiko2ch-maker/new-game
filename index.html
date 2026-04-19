@@ -2,44 +2,39 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-  <title>田舎町・商店前通り / 縦画面スマホ向け</title>
-  <meta name="description" content="歩いて気持ちいい田舎町の空気感を先に作る、縦画面スマホ向けホラゲーマップ試作。" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>田舎町・商店前通り</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <canvas id="game"></canvas>
+  <div id="app">
+    <canvas id="gameCanvas" width="360" height="640" aria-label="田舎町マップ"></canvas>
 
-  <div id="crtOverlay" class="crt-overlay scan-on"></div>
-
-  <div class="hud">
-    <div class="hud-top">
-      <div class="hud-chip title-chip">
-        <span class="sub">縦画面スマホ向け / マップ重視フル再構築版</span>
-        <strong>田舎町・商店前通り</strong>
-      </div>
-      <button id="scanBtn" class="hud-chip action-chip" type="button">SCANLINE: ON</button>
+    <div class="hud top-left glass">
+      <div class="mini">縦画面スマホ向け / 実働版 / マップ重視</div>
+      <div class="title">田舎町・商店前通り</div>
+      <div class="sub">左下スティック移動 / 右半分ドラッグ視点</div>
     </div>
 
-    <div id="hintBox" class="hint-box">
-      コンビニの明かりを目印に、細い生活道路から商店前通りまで歩いてみてください。
+    <button id="scanlineBtn" class="hud top-right glass chip" type="button">SCANLINE: ON</button>
+
+    <div id="message" class="hud center glass hidden"></div>
+
+    <div class="hud bottom-left joystick-wrap">
+      <div id="joystickBase" class="joystick-base">
+        <div id="joystickKnob" class="joystick-knob"></div>
+      </div>
+      <div class="label">移動</div>
     </div>
 
-    <div class="hud-bottom">
-      <div class="left-controls">
-        <div id="joystickBase" class="joystick-base">
-          <div id="joystickStick" class="joystick-stick"></div>
-        </div>
-        <div class="control-label">移動</div>
-      </div>
-      <div class="right-controls">
-        <button id="runBtn" class="pill run-off" type="button">走る: OFF</button>
-        <button id="interactBtn" class="pill interact" type="button">調べる</button>
-        <div class="control-label right">右半分をなぞると視点移動</div>
-      </div>
+    <div class="hud bottom-right controls-wrap">
+      <button id="runBtn" class="action-btn run on" type="button">走る: ON</button>
+      <button id="interactBtn" class="action-btn interact" type="button">調べる</button>
+      <div class="label right">右半分をなぞると視点移動</div>
     </div>
+
+    <div class="crosshair"></div>
   </div>
-
   <script src="game.js"></script>
 </body>
 </html>

@@ -1,1183 +1,885 @@
 (() => {
-  const canvas = document.getElementById('game');
+  'use strict';
+
+  const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d', { alpha: false });
-  const scanBtn = document.getElementById('scanBtn');
-  const crtOverlay = document.getElementById('crtOverlay');
+  ctx.imageSmoothingEnabled = false;
+
+  const scanlineBtn = document.getElementById('scanlineBtn');
   const runBtn = document.getElementById('runBtn');
   const interactBtn = document.getElementById('interactBtn');
-  const hintBox = document.getElementById('hintBox');
-  const joystickBase = document.getElementById('joystickBase');
-  const joystickStick = document.getElementById('joystickStick');
+  const messageEl = document.getElementById('message');
+  const joyBase = document.getElementById('joystickBase');
+  const joyKnob = document.getElementById('joystickKnob');
+
+  const baseW = 360;
+  const baseH = 640;
+  canvas.width = baseW;
+  canvas.height = baseH;
+
+  const HALF_FOV = Math.PI / 5.2;
+  const FOV = HALF_FOV * 2;
+  const MOVE_SPEED = 1.7;
+  const RUN_MULT = 1.75;
+  const ROT_SPEED = 0.0028;
+  const MAX_DIST = 22;
+  const horizonBase = 256;
+  const cameraHeight = 0.52;
+  const floorPlane = 0.72;
+  const textureSize = 64;
+
+  let lastTime = performance.now();
+  let scanlineOn = true;
+  let runOn = true;
+  let lookDragId = null;
+  let lookLastX = 0;
+  let joyId = null;
+  let msgTimer = 0;
 
   const state = {
-    running: false,
-    scanline: true,
-    showHintUntil: performance.now() + 9000,
-    lookDragId: null,
-    lastTime: performance.now(),
-    input: {
-      moveX: 0,
-      moveY: 0,
-      touchStarted: false,
-    },
-    message: 'コンビニの明かりを目印に、細い生活道路から商店前通りまで歩いてみてください。',
-    audioStarted: false,
+    x: 15.55,
+    y: 23.45,
+    angle: -1.56,
+    horizon: 0,
+    joyX: 0,
+    joyY: 0,
+    interactText: '歩くだけで夏の湿度が出るマップを目指して再構築。',
   };
 
-  const game = {
-    mapW: 44,
-    mapH: 34,
-    walls: [],
-    zone: [],
-    sprites: [],
-    interactables: [],
-    player: {
-      x: 7.5,
-      y: 27.5,
-      angle: -Math.PI / 2 + 0.15,
-      pitch: 0,
-      dirX: 0,
-      dirY: -1,
-      planeX: 0.78,
-      planeY: 0,
-      bob: 0,
-      lookVel: 0,
-    },
-    zBuffer: [],
-    texSize: 64,
-    textures: {},
-    spriteTextures: {},
-    skyCanvas: null,
-    lowCanvas: document.createElement('canvas'),
-    lowCtx: null,
-    renderW: 216,
-    renderH: 384,
-    horizon: 0.5,
-    time: 0,
-  };
-  game.lowCtx = game.lowCanvas.getContext('2d', { alpha: false });
+  const textures = {};
+  const spriteTextures = {};
 
-  function setHint(text, duration = 2600) {
-    state.message = text;
-    hintBox.textContent = text;
-    state.showHintUntil = performance.now() + duration;
+  const MAP_W = 29;
+  const MAP_H = 28;
+  // 0 empty, 1 store exterior, 2 shelf/interior wall, 3 houses, 4 shrine/storehouse, 5 closed shop, 6 hedge/block
+  const map = [
+    [3,3,3,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [3,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [3,0,0,0,0,3,0,0,6,6,6,0,0,0,0,0,0,0,0,4,4,4,0,0,0,0,0,0,0],
+    [3,0,0,0,0,3,0,0,6,0,6,0,0,0,0,0,0,0,0,4,0,4,0,0,0,0,0,0,0],
+    [3,3,3,0,3,3,0,0,6,0,6,0,0,0,0,0,0,0,0,4,0,4,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,4,0,4,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,4,4,4,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,5,5,5,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,5,0,5,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,5,0,5,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,5,5,5,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,2,2,2,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,2,0,2,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,0,6,0,0,0,1,0,1,2,0,2,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,6,6,6,0,0,0,1,1,1,2,2,2,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  ];
+
+  // area ids for floor texture selection
+  // 0 asphalt/road, 1 store tile, 2 grass, 3 concrete/parking, 4 dirt path
+  const floorMap = Array.from({ length: MAP_H }, (_, y) => Array.from({ length: MAP_W }, (_, x) => {
+    if (y < 8 && x < 6) return 2;
+    if (x >= 14 && x <= 19 && y >= 15 && y <= 22) return 1;
+    if (x >= 6 && x <= 11 && y >= 2 && y <= 22) return 4;
+    if (y >= 15 && y <= 22 && x >= 12 && x <= 16) return 3;
+    if (y >= 7 && y <= 10 && x >= 23 && x <= 25) return 3;
+    if (x <= 7 || x >= 20) return 2;
+    return 0;
+  }));
+
+  const hotspots = [
+    { x: 15.4, y: 18.3, text: '商店の入口。白い蛍光灯が周囲より少しだけ安心感を作る。' },
+    { x: 18.1, y: 20.4, text: '棚。まだストーリーは入れていないので、今は内装の密度確認用。' },
+    { x: 10.2, y: 12.2, text: '掲示板。町内会の貼り紙や夏祭りの名残がある想定。' },
+    { x: 20.3, y: 6.2, text: '祠方向。歩きたくなる分岐スポットとして配置。' },
+    { x: 24.1, y: 9.2, text: '閉店した駄菓子屋。夜だと看板だけ見える。' },
+    { x: 7.2, y: 18.2, text: '電話ボックス。生活感と少しの不穏さを足すスポット。' },
+    { x: 11.2, y: 21.5, text: '小橋と側溝。田舎道の密度を出すための要素。' },
+  ];
+
+  const sprites = [
+    { x: 14.5, y: 15.1, tex: 'storeSign', scale: 1.8, yOffset: 0.95 },
+    { x: 16.1, y: 15.15, tex: 'lampPost', scale: 1.7, yOffset: 1.35 },
+    { x: 12.8, y: 19.0, tex: 'vending', scale: 1.15, yOffset: 0.75 },
+    { x: 10.3, y: 12.0, tex: 'board', scale: 1.15, yOffset: 0.78 },
+    { x: 7.2, y: 18.2, tex: 'phone', scale: 1.05, yOffset: 0.88 },
+    { x: 11.1, y: 21.45, tex: 'bridgeRail', scale: 1.2, yOffset: 0.55 },
+    { x: 20.5, y: 6.3, tex: 'shrineLantern', scale: 1.2, yOffset: 0.74 },
+    { x: 24.0, y: 8.7, tex: 'closedShopSign', scale: 1.4, yOffset: 0.86 },
+    { x: 21.9, y: 18.5, tex: 'busStop', scale: 1.2, yOffset: 0.82 },
+    { x: 12.0, y: 17.2, tex: 'car', scale: 1.55, yOffset: 0.68 },
+    { x: 9.1, y: 16.0, tex: 'mirror', scale: 1.0, yOffset: 1.15 },
+    { x: 22.1, y: 20.8, tex: 'tree', scale: 1.9, yOffset: 1.25 },
+    { x: 5.9, y: 10.0, tex: 'houseLife', scale: 1.35, yOffset: 0.64 },
+    { x: 3.7, y: 3.8, tex: 'houseLife', scale: 1.35, yOffset: 0.64 },
+    { x: 5.4, y: 3.0, tex: 'tree', scale: 1.6, yOffset: 1.2 },
+    { x: 17.1, y: 18.2, tex: 'aisle', scale: 1.0, yOffset: 0.72 },
+    { x: 18.9, y: 18.2, tex: 'aisle', scale: 1.0, yOffset: 0.72 },
+    { x: 17.1, y: 20.2, tex: 'aisle', scale: 1.0, yOffset: 0.72 },
+    { x: 18.9, y: 20.2, tex: 'aisle', scale: 1.0, yOffset: 0.72 },
+    { x: 15.2, y: 17.1, tex: 'counter', scale: 1.35, yOffset: 0.78 },
+    { x: 15.8, y: 16.4, tex: 'clock', scale: 0.72, yOffset: 1.48 },
+    { x: 15.1, y: 20.8, tex: 'doorFrame', scale: 1.18, yOffset: 1.05 },
+  ];
+
+  function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+  function wrapAngle(a) {
+    while (a < -Math.PI) a += Math.PI * 2;
+    while (a > Math.PI) a -= Math.PI * 2;
+    return a;
+  }
+  function dist2(ax, ay, bx, by) {
+    const dx = ax - bx;
+    const dy = ay - by;
+    return dx * dx + dy * dy;
   }
 
-  function makeTexture(drawFn, size = 64) {
+  function makeCanvas(w = textureSize, h = textureSize) {
     const c = document.createElement('canvas');
-    c.width = c.height = size;
+    c.width = w;
+    c.height = h;
+    return c;
+  }
+
+  function paintTexture(name, painter, w = textureSize, h = textureSize) {
+    const c = makeCanvas(w, h);
     const g = c.getContext('2d');
-    drawFn(g, size);
-    const data = g.getImageData(0, 0, size, size).data;
-    return { canvas: c, data, size };
+    g.imageSmoothingEnabled = false;
+    painter(g, w, h);
+    textures[name] = c;
   }
 
-  function shadeColor(r, g, b, shade) {
-    return [Math.max(0, Math.min(255, r * shade)), Math.max(0, Math.min(255, g * shade)), Math.max(0, Math.min(255, b * shade))];
+  function paintSprite(name, painter, w = 64, h = 96) {
+    const c = makeCanvas(w, h);
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    painter(g, w, h);
+    spriteTextures[name] = c;
   }
 
-  function drawNoise(g, size, base, variance) {
-    const img = g.createImageData(size, size);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const n = base + (Math.random() - 0.5) * variance;
-      img.data[i] = n;
-      img.data[i + 1] = n;
-      img.data[i + 2] = n;
-      img.data[i + 3] = 255;
+  function addGrain(g, w, h, alpha = 0.08) {
+    for (let i = 0; i < 180; i++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      const a = Math.random() * alpha;
+      g.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+      g.fillRect(x, y, 1, 1);
     }
-    g.putImageData(img, 0, 0);
   }
 
-  function textCenter(g, text, x, y, size, color, font = 'system-ui') {
-    g.fillStyle = color;
-    g.font = `800 ${size}px ${font}`;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(text, x, y);
-  }
+  function buildTextures() {
+    paintTexture('store', (g, w, h) => {
+      g.fillStyle = '#c8c2b6'; g.fillRect(0, 0, w, h);
+      for (let x = 0; x < w; x += 12) {
+        g.fillStyle = x % 24 === 0 ? '#b5aea2' : '#d7d1c6';
+        g.fillRect(x, 0, 7, h);
+      }
+      g.fillStyle = '#1bba86'; g.fillRect(0, 8, w, 6);
+      g.fillStyle = '#bf4541'; g.fillRect(0, 15, w, 4);
+      g.fillStyle = '#f9f9f5'; g.fillRect(18, 0, 28, 18);
+      g.fillStyle = '#59be72'; g.fillRect(12, 10, 40, 16);
+      g.fillStyle = '#e4f4ea';
+      g.font = 'bold 8px sans-serif';
+      g.fillText('KOMOREBI', 15, 21);
+      g.fillStyle = '#3b3c46'; g.fillRect(24, 28, 16, 36);
+      g.fillStyle = '#0a0c14'; g.fillRect(26, 30, 12, 34);
+      g.fillStyle = '#d3e1f9'; g.fillRect(2, 30, 18, 28);
+      g.fillRect(44, 30, 18, 28);
+      addGrain(g, w, h, 0.04);
+    });
 
-  function createTextures() {
-    game.textures.asphalt = makeTexture((g, s) => {
-      g.fillStyle = '#262932';
-      g.fillRect(0, 0, s, s);
-      drawNoise(g, s, 46, 18);
-      g.fillStyle = 'rgba(20,20,26,0.26)';
-      for (let i = 0; i < 120; i++) g.fillRect(Math.random() * s, Math.random() * s, 1 + Math.random() * 2, 1 + Math.random() * 2);
-      g.strokeStyle = 'rgba(175,180,190,0.1)';
-      g.lineWidth = 1;
-      for (let i = 0; i < 5; i++) {
-        g.beginPath();
-        g.moveTo(Math.random() * s, Math.random() * s);
-        g.lineTo(Math.random() * s, Math.random() * s);
-        g.stroke();
+    paintTexture('shelf', (g, w, h) => {
+      g.fillStyle = '#3b4254'; g.fillRect(0, 0, w, h);
+      for (let y = 4; y < h; y += 14) {
+        g.fillStyle = '#262c38'; g.fillRect(0, y, w, 2);
+      }
+      for (let y = 7; y < h; y += 14) {
+        for (let x = 2; x < w; x += 10) {
+          g.fillStyle = ['#e9d86c','#d04f4f','#6d89ef','#8ed19b','#c788e1'][((x+y) / 3) % 5 | 0];
+          g.fillRect(x, y, 6, 8 + ((x + y) % 3));
+        }
+      }
+      addGrain(g, w, h, 0.04);
+    });
+
+    paintTexture('house', (g, w, h) => {
+      g.fillStyle = '#cfc6b5'; g.fillRect(0, 0, w, h);
+      for (let x = 0; x < w; x += 10) {
+        g.fillStyle = x % 20 === 0 ? '#b9af9f' : '#ddd4c6';
+        g.fillRect(x, 0, 7, h);
+      }
+      g.fillStyle = '#6e6659'; g.fillRect(0, 0, w, 10);
+      g.fillStyle = '#7f6f55'; g.fillRect(4, 24, 16, 22);
+      g.fillStyle = '#ebe9de'; g.fillRect(7, 28, 10, 16);
+      g.fillStyle = '#857b6d'; g.fillRect(36, 24, 18, 16);
+      g.fillStyle = '#f3f1eb'; g.fillRect(39, 27, 12, 10);
+      addGrain(g, w, h, 0.03);
+    });
+
+    paintTexture('shrine', (g, w, h) => {
+      g.fillStyle = '#6d5845'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#574737'; g.fillRect(0, 0, w, 10);
+      for (let y = 10; y < h; y += 8) {
+        g.fillStyle = y % 16 === 0 ? '#836652' : '#705948';
+        g.fillRect(0, y, w, 6);
+      }
+      addGrain(g, w, h, 0.02);
+    });
+
+    paintTexture('closedShop', (g, w, h) => {
+      g.fillStyle = '#988e80'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#584e46'; g.fillRect(0, 0, w, 12);
+      for (let x = 0; x < w; x += 6) {
+        g.fillStyle = x % 12 === 0 ? '#80786f' : '#a1998d';
+        g.fillRect(x, 18, 4, h - 18);
+      }
+      g.fillStyle = '#22242a'; g.fillRect(16, 18, 32, 36);
+      addGrain(g, w, h, 0.04);
+    });
+
+    paintTexture('hedge', (g, w, h) => {
+      g.fillStyle = '#335241'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 320; i++) {
+        g.fillStyle = ['#416652','#587a61','#2f4c3f'][i % 3];
+        g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
       }
     });
 
-    game.textures.concrete = makeTexture((g, s) => {
-      g.fillStyle = '#7d8287';
-      g.fillRect(0, 0, s, s);
-      drawNoise(g, s, 126, 28);
-      g.fillStyle = 'rgba(255,255,255,0.05)';
-      for (let i = 0; i < 60; i++) g.fillRect(Math.random() * s, Math.random() * s, 2, 2);
-      g.strokeStyle = 'rgba(70,70,75,0.26)';
-      for (let y = 0; y < s; y += 16) {
-        g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); g.stroke();
+    paintTexture('asphalt', (g, w, h) => {
+      const grad = g.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#4f5157'); grad.addColorStop(1, '#242731');
+      g.fillStyle = grad; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 260; i++) {
+        const c = 30 + Math.random() * 50;
+        g.fillStyle = `rgba(${c},${c},${c},0.35)`;
+        g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
       }
-    });
-
-    game.textures.tile = makeTexture((g, s) => {
-      g.fillStyle = '#dadbd6';
-      g.fillRect(0, 0, s, s);
-      g.strokeStyle = 'rgba(120,128,128,0.32)';
-      for (let i = 0; i <= s; i += 16) {
-        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke();
-        g.beginPath(); g.moveTo(0, i); g.lineTo(s, i); g.stroke();
-      }
-      g.fillStyle = 'rgba(110,110,100,0.06)';
-      for (let i = 0; i < 40; i++) g.fillRect(Math.random() * s, Math.random() * s, 3, 3);
-    });
-
-    game.textures.dirt = makeTexture((g, s) => {
-      g.fillStyle = '#615647';
-      g.fillRect(0, 0, s, s);
-      const img = g.createImageData(s, s);
-      for (let i = 0; i < img.data.length; i += 4) {
-        const n = 86 + Math.random() * 34;
-        img.data[i] = n;
-        img.data[i + 1] = 73 + Math.random() * 25;
-        img.data[i + 2] = 56 + Math.random() * 20;
-        img.data[i + 3] = 255;
-      }
-      g.putImageData(img, 0, 0);
-      g.fillStyle = 'rgba(70,90,50,0.18)';
-      for (let i = 0; i < 70; i++) g.fillRect(Math.random() * s, Math.random() * s, 2, 4);
-    });
-
-    game.textures.grass = makeTexture((g, s) => {
-      g.fillStyle = '#274025';
-      g.fillRect(0, 0, s, s);
-      for (let i = 0; i < 180; i++) {
-        const x = Math.random() * s;
-        const y = Math.random() * s;
-        const h = 3 + Math.random() * 8;
-        g.strokeStyle = `rgba(${60 + Math.random() * 40}, ${110 + Math.random() * 80}, ${50 + Math.random() * 20}, 0.65)`;
-        g.beginPath();
-        g.moveTo(x, y + h);
-        g.lineTo(x + (Math.random() - 0.5) * 3, y);
-        g.stroke();
-      }
-    });
-
-    game.textures.water = makeTexture((g, s) => {
-      const grad = g.createLinearGradient(0, 0, s, s);
-      grad.addColorStop(0, '#23426b');
-      grad.addColorStop(1, '#0d2341');
-      g.fillStyle = grad;
-      g.fillRect(0, 0, s, s);
-      g.strokeStyle = 'rgba(180,220,255,0.18)';
-      for (let i = 0; i < s; i += 7) {
-        g.beginPath();
-        g.moveTo(0, i + Math.sin(i * 0.2) * 3);
-        g.lineTo(s, i + Math.cos(i * 0.17) * 3);
-        g.stroke();
-      }
-    });
-
-    game.textures.stone = makeTexture((g, s) => {
-      g.fillStyle = '#8f8a80';
-      g.fillRect(0, 0, s, s);
-      g.strokeStyle = 'rgba(80,80,80,0.25)';
+      g.strokeStyle = 'rgba(230,230,230,0.55)';
       g.lineWidth = 2;
-      for (let y = 0; y < s; y += 18) {
-        for (let x = 0; x < s; x += 18) {
-          const ox = (Math.random() - 0.5) * 3;
-          const oy = (Math.random() - 0.5) * 3;
-          g.strokeRect(x + ox, y + oy, 16, 16);
-        }
+      g.beginPath();
+      g.moveTo(12, 12); g.lineTo(28, 14); g.lineTo(44, 12); g.stroke();
+    });
+
+    paintTexture('tile', (g, w, h) => {
+      g.fillStyle = '#d8dbe1'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#bcc2cf'; g.lineWidth = 1;
+      for (let x = 0; x < w; x += 16) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+      for (let y = 0; y < h; y += 16) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+      addGrain(g, w, h, 0.03);
+    });
+
+    paintTexture('grass', (g, w, h) => {
+      const grad = g.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#4c6c43'); grad.addColorStop(1, '#1f3824');
+      g.fillStyle = grad; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 240; i++) {
+        g.fillStyle = ['#58794f','#7d985c','#375036'][i % 3];
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        g.fillRect(x, y, 1, 4);
       }
     });
 
-    game.textures.shopExterior = makeTexture((g, s) => {
-      g.fillStyle = '#cfc6bb';
-      g.fillRect(0, 0, s, s);
-      for (let y = 0; y < s; y += 8) {
-        g.fillStyle = y % 16 === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
-        g.fillRect(0, y, s, 4);
+    paintTexture('concrete', (g, w, h) => {
+      g.fillStyle = '#7c7f84'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 220; i++) {
+        const c = 120 + Math.random() * 50;
+        g.fillStyle = `rgba(${c},${c},${c},0.2)`;
+        g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
       }
-      g.fillStyle = '#2ead6e'; g.fillRect(0, 12, s, 4);
-      g.fillStyle = '#df6f53'; g.fillRect(0, 18, s, 3);
-      g.fillStyle = 'rgba(0,0,0,0.06)';
-      for (let i = 0; i < 25; i++) g.fillRect(Math.random() * s, Math.random() * s, 2, 1 + Math.random() * 2);
+      g.strokeStyle = 'rgba(50,50,50,0.35)';
+      g.beginPath(); g.moveTo(5, 45); g.lineTo(18, 30); g.lineTo(30, 36); g.stroke();
     });
 
-    game.textures.shopWallpaper = makeTexture((g, s) => {
-      g.fillStyle = '#8b7b6a';
-      g.fillRect(0, 0, s, s);
-      for (let x = 0; x < s; x += 8) {
-        g.fillStyle = x % 16 === 0 ? '#927f6a' : '#776959';
-        g.fillRect(x, 0, 5, s);
-      }
-      g.fillStyle = 'rgba(255,255,255,0.05)';
-      for (let i = 0; i < 45; i++) g.fillRect(Math.random() * s, Math.random() * s, 1, 3);
-    });
-
-    game.textures.houseWallA = makeTexture((g, s) => {
-      g.fillStyle = '#a49b92';
-      g.fillRect(0, 0, s, s);
-      for (let x = 0; x < s; x += 10) {
-        g.fillStyle = x % 20 === 0 ? '#96897f' : '#b3aba4';
-        g.fillRect(x, 0, 8, s);
-      }
-      g.strokeStyle = 'rgba(70,60,50,0.14)';
-      for (let y = 0; y < s; y += 20) { g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); g.stroke(); }
-    });
-
-    game.textures.houseWallB = makeTexture((g, s) => {
-      g.fillStyle = '#72818a';
-      g.fillRect(0, 0, s, s);
-      for (let y = 0; y < s; y += 8) {
-        g.fillStyle = y % 16 === 0 ? '#85959e' : '#66727a';
-        g.fillRect(0, y, s, 4);
-      }
-      g.fillStyle = 'rgba(255,255,255,0.05)';
-      for (let i = 0; i < 40; i++) g.fillRect(Math.random() * s, Math.random() * s, 2, 2);
-    });
-
-    game.textures.blockWall = makeTexture((g, s) => {
-      g.fillStyle = '#a0a4a8';
-      g.fillRect(0, 0, s, s);
-      g.strokeStyle = 'rgba(80,85,90,0.3)';
-      g.lineWidth = 1;
-      for (let y = 0; y < s; y += 16) {
-        for (let x = 0; x < s; x += 24) {
-          const offset = (y / 16 % 2) * 12;
-          g.strokeRect((x + offset) % s, y, 23, 15);
-        }
+    paintTexture('dirt', (g, w, h) => {
+      const grad = g.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#7b705c'); grad.addColorStop(1, '#4a4035');
+      g.fillStyle = grad; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 200; i++) {
+        g.fillStyle = ['#655a4a','#8c806d','#3e342b'][i % 3];
+        g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
       }
     });
 
-    game.textures.fence = makeTexture((g, s) => {
-      g.fillStyle = '#555f6e';
-      g.fillRect(0, 0, s, s);
-      g.fillStyle = '#cad7e2';
-      for (let x = 6; x < s; x += 12) g.fillRect(x, 0, 4, s);
-      g.fillRect(0, 14, s, 4);
-      g.fillRect(0, 34, s, 4);
+    paintSprite('storeSign', (g, w, h) => {
+      g.fillStyle = '#56be75'; g.fillRect(4, 18, w - 8, 28);
+      g.fillStyle = '#dff7e7';
+      g.font = 'bold 10px sans-serif';
+      g.fillText('こもれびマート', 8, 36);
+    }, 128, 64);
+
+    paintSprite('lampPost', (g, w, h) => {
+      g.fillStyle = '#2b2f38'; g.fillRect(29, 10, 6, h - 18);
+      g.fillRect(30, 22, 20, 4);
+      g.fillStyle = '#fff5cc'; g.fillRect(46, 18, 18, 12);
+      g.fillStyle = 'rgba(255,238,170,0.18)'; g.beginPath(); g.arc(54, 26, 22, 0, Math.PI * 2); g.fill();
     });
 
-    game.textures.shelf = makeTexture((g, s) => {
-      g.fillStyle = '#27354b';
-      g.fillRect(0, 0, s, s);
-      for (let y = 8; y < s; y += 14) {
-        g.fillStyle = '#152130'; g.fillRect(0, y, s, 4);
-        for (let x = 4; x < s; x += 9) {
-          const hue = [ '#d45161', '#5e89d7', '#cea95a', '#7cc06f', '#a274d7', '#d98557' ][(x + y) % 6];
-          g.fillStyle = hue;
-          g.fillRect(x, y - 8, 6, 8 + (x % 2));
-        }
-      }
-    });
-
-    game.textures.fridge = makeTexture((g, s) => {
-      g.fillStyle = '#ccd5dc';
-      g.fillRect(0, 0, s, s);
-      g.fillStyle = '#a6b8c2';
-      for (let x = 0; x < s; x += 16) g.fillRect(x, 0, 3, s);
-      g.fillStyle = 'rgba(180,230,255,0.24)';
-      for (let x = 3; x < s; x += 16) g.fillRect(x, 2, 11, s - 4);
-      for (let x = 5; x < s; x += 16) {
-        for (let y = 8; y < s; y += 14) {
-          g.fillStyle = [ '#88c9ff', '#ffa86e', '#f1f4f6', '#d96161' ][(x + y) % 4];
-          g.fillRect(x, y, 7, 9);
-        }
-      }
-    });
-
-    game.textures.counter = makeTexture((g, s) => {
-      g.fillStyle = '#c7c7bf';
-      g.fillRect(0, 0, s, s);
-      for (let y = 0; y < s; y += 6) {
-        g.fillStyle = y % 12 === 0 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.03)';
-        g.fillRect(0, y, s, 2);
-      }
-      g.fillStyle = '#7a7e85'; g.fillRect(0, s - 10, s, 10);
-    });
-
-    game.textures.shutter = makeTexture((g, s) => {
-      g.fillStyle = '#6c6f74';
-      g.fillRect(0, 0, s, s);
-      for (let y = 0; y < s; y += 6) {
-        g.fillStyle = y % 12 === 0 ? '#81858a' : '#5f6369';
-        g.fillRect(0, y, s, 3);
-      }
-    });
-
-    game.textures.curtain = makeTexture((g, s) => {
-      g.fillStyle = '#191c23';
-      g.fillRect(0, 0, s, s);
-      g.fillStyle = '#2b3140';
-      for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 4, s);
-    });
-
-    game.textures.ceiling = makeTexture((g, s) => {
-      g.fillStyle = '#c9c9c2';
-      g.fillRect(0, 0, s, s);
-      g.strokeStyle = 'rgba(90,90,90,0.22)';
-      for (let i = 0; i <= s; i += 16) {
-        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke();
-        g.beginPath(); g.moveTo(0, i); g.lineTo(s, i); g.stroke();
-      }
-      g.fillStyle = 'rgba(255,255,255,0.34)';
-      g.fillRect(18, 18, 28, 8);
-      g.fillStyle = 'rgba(0,0,0,0.08)';
-      g.fillRect(16, 16, 32, 12);
-    });
-
-    game.spriteTextures.sign = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#29a85e';
-      g.fillRect(6, 14, s - 12, 28);
-      g.fillStyle = '#e8fbe9';
-      g.font = '700 10px sans-serif';
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      g.fillText('こもれびマート', s / 2, 28);
-    });
-
-    game.spriteTextures.lightPole = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#433f41';
-      g.fillRect(s * 0.48, 4, 6, s - 4);
-      g.fillRect(s * 0.48, 16, 16, 4);
-      g.fillStyle = '#f0e2bb';
-      g.fillRect(s * 0.62, 14, 18, 8);
-      g.fillStyle = 'rgba(255,232,170,0.35)';
-      g.beginPath(); g.arc(s * 0.76, 18, 12, 0, Math.PI * 2); g.fill();
-    });
-
-    game.spriteTextures.powerPole = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#3d332e';
-      g.fillRect(s * 0.48, 2, 8, s - 2);
-      g.fillRect(s * 0.3, 20, s * 0.45, 4);
-      g.fillStyle = '#222831';
-      for (let i = 0; i < 3; i++) {
-        g.beginPath();
-        g.arc(s * (0.3 + i * 0.16), 22, 3, 0, Math.PI * 2);
-        g.fill();
-      }
-    });
-
-    game.spriteTextures.vending = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#eef4f9'; g.fillRect(10, 8, s - 20, s - 8);
-      g.fillStyle = '#7dd6ff'; g.fillRect(18, 16, s - 36, 24);
-      g.fillStyle = '#7d8ea1'; g.fillRect(18, 44, s - 36, 28);
+    paintSprite('vending', (g, w, h) => {
+      g.fillStyle = '#d9e6ff'; g.fillRect(10, 8, 40, 74);
+      g.fillStyle = '#76a3ff'; g.fillRect(14, 14, 32, 30);
+      g.fillStyle = '#f4f6f8'; g.fillRect(14, 48, 32, 18);
       for (let i = 0; i < 4; i++) {
-        g.fillStyle = ['#d85454', '#5f8fd9', '#e0c65f', '#7bc875'][i];
-        g.fillRect(22 + i * 10, 22, 8, 14);
+        g.fillStyle = ['#ff5959','#ffe06e','#71c4ff','#9ded90'][i];
+        g.fillRect(18 + i * 6, 52, 4, 10);
       }
-      g.fillStyle = '#1f2d40'; g.fillRect(14, s - 10, s - 28, 6);
+      g.fillStyle = '#2e374a'; g.fillRect(18, 68, 24, 6);
+      g.fillStyle = '#a6b8d4'; g.fillRect(16, 78, 28, 6);
     });
 
-    game.spriteTextures.phone = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = 'rgba(195, 225, 255, 0.24)'; g.fillRect(8, 12, s - 16, s - 12);
-      g.strokeStyle = '#a8d1ff'; g.lineWidth = 2; g.strokeRect(8, 12, s - 16, s - 12);
-      g.fillStyle = '#4d6e91'; g.fillRect(20, 24, s - 40, 18);
-      g.fillStyle = '#dfe7ef'; g.fillRect(24, 50, s - 48, 18);
+    paintSprite('board', (g, w, h) => {
+      g.fillStyle = '#72624d'; g.fillRect(4, 16, 56, 8);
+      g.fillRect(10, 24, 8, 56); g.fillRect(46, 24, 8, 56);
+      g.fillStyle = '#d3c7b2'; g.fillRect(8, 24, 48, 32);
+      g.fillStyle = '#917458'; g.fillRect(10, 26, 44, 28);
+      g.fillStyle = '#f1eadf'; g.fillRect(14, 30, 18, 10); g.fillRect(34, 34, 14, 8);
     });
 
-    game.spriteTextures.busStop = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#40494f'; g.fillRect(s * 0.48, 10, 6, s - 10);
-      g.fillStyle = '#e6f0ff'; g.fillRect(s * 0.18, 10, s * 0.48, 18);
-      g.fillStyle = '#2c456f'; g.fillRect(s * 0.2, 14, s * 0.44, 10);
+    paintSprite('phone', (g, w, h) => {
+      g.fillStyle = 'rgba(194, 224, 255, 0.25)'; g.fillRect(12, 12, 40, 70);
+      g.strokeStyle = '#d3e6ff'; g.lineWidth = 2; g.strokeRect(12, 12, 40, 70);
+      g.fillStyle = '#4a5d7a'; g.fillRect(22, 28, 20, 20);
+      g.fillStyle = '#26364d'; g.fillRect(25, 32, 14, 12);
+      g.fillStyle = '#dce7f5'; g.fillRect(18, 10, 28, 8);
     });
 
-    game.spriteTextures.notice = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#715438'; g.fillRect(10, 10, s - 20, s - 18);
-      g.fillStyle = '#ead7aa'; g.fillRect(14, 14, s - 28, s - 26);
-      g.fillStyle = '#c76b60'; g.fillRect(18, 18, s - 36, 7);
-      for (let i = 0; i < 6; i++) {
-        g.fillStyle = i % 2 ? '#87a0c6' : '#d9bea0';
-        g.fillRect(18 + (i % 2) * 20, 30 + i * 5, 18, 4);
-      }
+    paintSprite('bridgeRail', (g, w, h) => {
+      g.fillStyle = '#6a6f75'; g.fillRect(0, 42, w, 8);
+      g.fillStyle = '#5b6066';
+      for (let x = 4; x < w; x += 10) g.fillRect(x, 24, 4, 32);
+    }, 88, 64);
+
+    paintSprite('shrineLantern', (g, w, h) => {
+      g.fillStyle = '#5e4a37'; g.fillRect(28, 38, 8, 44);
+      g.fillStyle = '#f2d79d'; g.fillRect(16, 18, 32, 24);
+      g.fillStyle = '#8a3f32'; g.fillRect(16, 14, 32, 4); g.fillRect(16, 42, 32, 4);
+      g.fillStyle = 'rgba(246, 217, 146, 0.18)'; g.beginPath(); g.arc(32, 30, 28, 0, Math.PI * 2); g.fill();
     });
 
-    game.spriteTextures.bicycle = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.strokeStyle = '#26303d'; g.lineWidth = 3;
-      g.beginPath(); g.arc(18, 48, 12, 0, Math.PI * 2); g.stroke();
-      g.beginPath(); g.arc(46, 48, 12, 0, Math.PI * 2); g.stroke();
-      g.beginPath();
-      g.moveTo(18, 48); g.lineTo(28, 30); g.lineTo(42, 48); g.lineTo(28, 48); g.closePath(); g.stroke();
-      g.beginPath(); g.moveTo(28, 30); g.lineTo(36, 22); g.stroke();
+    paintSprite('closedShopSign', (g, w, h) => {
+      g.fillStyle = '#7a5c42'; g.fillRect(6, 12, w - 12, 20);
+      g.fillStyle = '#ecdec5'; g.font = 'bold 9px sans-serif'; g.fillText('駄菓子', 18, 26);
+      g.fillStyle = '#564c45'; g.fillRect(12, 34, w - 24, 36);
+    }, 92, 80);
+
+    paintSprite('busStop', (g, w, h) => {
+      g.fillStyle = '#6d7f93'; g.fillRect(14, 18, 36, 6);
+      g.fillStyle = '#cfe2ff'; g.fillRect(18, 4, 28, 18);
+      g.fillStyle = '#39465a'; g.fillRect(22, 24, 4, 58); g.fillRect(38, 24, 4, 58);
+      g.fillStyle = '#8ba0bb'; g.fillRect(14, 52, 36, 8);
     });
 
-    game.spriteTextures.car = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#c8d0d6';
-      g.beginPath();
-      g.moveTo(10, 48); g.lineTo(18, 30); g.lineTo(44, 24); g.lineTo(58, 30); g.lineTo(62, 48); g.closePath(); g.fill();
-      g.fillStyle = '#87a2b8'; g.fillRect(20, 28, 30, 12);
-      g.fillStyle = '#272c36'; g.beginPath(); g.arc(20, 50, 8, 0, Math.PI * 2); g.fill(); g.beginPath(); g.arc(52, 50, 8, 0, Math.PI * 2); g.fill();
+    paintSprite('car', (g, w, h) => {
+      g.fillStyle = '#d8d9de'; g.fillRect(10, 28, 68, 26);
+      g.fillStyle = '#bcc3ce'; g.fillRect(24, 16, 40, 16);
+      g.fillStyle = '#8fa2bf'; g.fillRect(28, 18, 14, 12); g.fillRect(44, 18, 14, 12);
+      g.fillStyle = '#23242b'; g.fillRect(20, 50, 14, 12); g.fillRect(54, 50, 14, 12);
+      g.fillStyle = '#f1e1a8'; g.fillRect(10, 34, 6, 6);
+      g.fillStyle = '#e26758'; g.fillRect(72, 34, 6, 6);
+    }, 88, 72);
+
+    paintSprite('mirror', (g, w, h) => {
+      g.fillStyle = '#4f5b6d'; g.fillRect(28, 18, 4, 64);
+      g.fillStyle = '#cf612f'; g.beginPath(); g.arc(28, 16, 14, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#cdddf2'; g.beginPath(); g.arc(28, 16, 10, 0, Math.PI * 2); g.fill();
     });
 
-    game.spriteTextures.tree = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#493626'; g.fillRect(s * 0.48, s * 0.62, 8, s * 0.3);
-      const colors = ['#263e27', '#325533', '#406943'];
-      for (let i = 0; i < 24; i++) {
-        g.fillStyle = colors[i % colors.length];
-        const r = 10 + Math.random() * 12;
-        const x = s * 0.5 + (Math.random() - 0.5) * 24;
-        const y = s * 0.34 + (Math.random() - 0.5) * 18;
-        g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-      }
-    });
-
-    game.spriteTextures.shrine = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#b4473c';
-      g.fillRect(16, 16, 6, s - 18); g.fillRect(s - 22, 16, 6, s - 18);
-      g.fillRect(10, 16, s - 20, 6);
-      g.fillRect(6, 22, s - 12, 4);
-    });
-
-    game.spriteTextures.curtain = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#0f1319'; g.fillRect(8, 10, s - 16, s - 10);
-      g.fillStyle = '#232a36';
-      for (let x = 12; x < s - 12; x += 8) g.fillRect(x, 10, 4, s - 10);
-    });
-
-    game.spriteTextures.crt = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#30383e'; g.fillRect(6, 14, s - 18, s - 12);
-      g.fillStyle = '#091015'; g.fillRect(12, 20, s - 30, s - 28);
-      g.fillStyle = '#ff9b40'; g.font = '700 8px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText('THANK YOU', s / 2 - 5, 30); g.fillText('FOR COMING.', s / 2 - 5, 40);
-    });
-
-    game.spriteTextures.magazine = makeTexture((g, s) => {
-      g.clearRect(0, 0, s, s);
-      g.fillStyle = '#9f8f76'; g.fillRect(8, 8, s - 16, s - 8);
-      for (let y = 14; y < s - 10; y += 12) {
-        g.fillStyle = ['#d97d7b', '#d9b67f', '#9bc58c', '#7fb0d9'][Math.floor(y / 12) % 4];
-        g.fillRect(12, y, s - 24, 8);
+    paintSprite('tree', (g, w, h) => {
+      g.fillStyle = '#5d4530'; g.fillRect(28, 42, 8, 54);
+      for (const [x,y,r,c] of [[32,22,18,'#33553d'],[20,34,16,'#456c4f'],[44,35,18,'#294635'],[32,42,22,'#3f5e45']]) {
+        g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
       }
     });
 
-    buildSky();
-  }
+    paintSprite('houseLife', (g, w, h) => {
+      g.fillStyle = '#bfae8d'; g.fillRect(12, 30, 16, 12);
+      g.fillStyle = '#7a7d82'; g.fillRect(32, 24, 16, 18);
+      g.fillStyle = '#b5c5db'; g.fillRect(46, 22, 6, 8);
+      g.fillStyle = '#4a8a4a'; g.fillRect(52, 34, 10, 10);
+      g.fillStyle = '#8bc173'; g.fillRect(54, 26, 6, 8);
+    }, 72, 56);
 
-  function buildSky() {
-    const c = document.createElement('canvas');
-    c.width = 1024; c.height = 512;
-    const g = c.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, c.height);
-    grad.addColorStop(0, '#10255a');
-    grad.addColorStop(0.55, '#173768');
-    grad.addColorStop(0.62, '#2a4978');
-    grad.addColorStop(0.72, '#e28b3f');
-    grad.addColorStop(0.76, '#f6b365');
-    grad.addColorStop(0.82, '#1d2f52');
-    grad.addColorStop(1, '#07131f');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, c.width, c.height);
-
-    for (let i = 0; i < 160; i++) {
-      const x = Math.random() * c.width;
-      const y = Math.random() * c.height * 0.56;
-      const r = Math.random() * 1.4 + 0.2;
-      g.fillStyle = `rgba(255,255,255,${0.4 + Math.random() * 0.45})`;
-      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-    }
-
-    g.fillStyle = '#10203a';
-    g.beginPath();
-    g.moveTo(0, 360);
-    for (let x = 0; x <= c.width; x += 48) {
-      const y = 330 + Math.sin(x * 0.015) * 20 + Math.cos(x * 0.008) * 28 + Math.random() * 10;
-      g.lineTo(x, y);
-    }
-    g.lineTo(c.width, c.height); g.lineTo(0, c.height); g.closePath(); g.fill();
-
-    g.fillStyle = 'rgba(20,34,56,0.92)';
-    for (let i = 0; i < 20; i++) {
-      const x = i * 52 + Math.random() * 20;
-      const w = 18 + Math.random() * 20;
-      const h = 28 + Math.random() * 28;
-      g.fillRect(x, 340 - h, w, h);
-    }
-
-    g.strokeStyle = 'rgba(52, 62, 72, 0.8)';
-    g.lineWidth = 2;
-    for (let i = 0; i < 5; i++) {
-      const baseX = 100 + i * 190;
-      g.beginPath(); g.moveTo(baseX, 250); g.lineTo(baseX, 360); g.stroke();
-      for (let w = 0; w < 3; w++) {
-        g.beginPath();
-        g.moveTo(baseX, 260 + w * 12);
-        g.bezierCurveTo(baseX + 90, 252 + w * 10, baseX + 160, 270 + w * 10, baseX + 260, 260 + w * 12);
-        g.stroke();
+    paintSprite('aisle', (g, w, h) => {
+      g.fillStyle = '#343a48'; g.fillRect(10, 18, 44, 64);
+      g.fillStyle = '#2a2f3b'; g.fillRect(12, 20, 40, 60);
+      for (let y = 24; y < 74; y += 10) {
+        for (let x = 16; x < 48; x += 8) {
+          g.fillStyle = ['#ef7272','#efe072','#7ec8ff','#bd88e8','#95df95'][(x + y) % 5];
+          g.fillRect(x, y, 6, 8);
+        }
       }
-    }
-    game.skyCanvas = c;
+    }, 64, 96);
+
+    paintSprite('counter', (g, w, h) => {
+      g.fillStyle = '#c8c3b8'; g.fillRect(4, 40, w - 8, 26);
+      g.fillStyle = '#9c9689'; g.fillRect(4, 62, w - 8, 14);
+      g.fillStyle = '#273140'; g.fillRect(64, 18, 24, 30);
+      g.fillStyle = '#161c27'; g.fillRect(67, 21, 18, 24);
+      g.fillStyle = '#f7f1ea'; g.fillRect(20, 30, 12, 18);
+      g.fillStyle = '#9ab668'; g.fillRect(20, 40, 12, 4);
+      g.fillStyle = '#4a6987'; g.fillRect(20, 44, 12, 4);
+    }, 96, 88);
+
+    paintSprite('clock', (g, w, h) => {
+      g.fillStyle = '#1a232e'; g.fillRect(10, 10, 44, 26);
+      g.fillStyle = '#41ee8a'; g.font = 'bold 18px monospace'; g.fillText('22:46', 12, 29);
+    }, 64, 48);
+
+    paintSprite('doorFrame', (g, w, h) => {
+      g.fillStyle = '#d6d0c4'; g.fillRect(18, 4, 12, h - 8);
+      g.fillRect(52, 4, 12, h - 8);
+      g.fillRect(18, 4, 46, 10);
+      g.fillStyle = 'rgba(190, 210, 240, 0.18)'; g.fillRect(26, 20, 12, h - 24); g.fillRect(44, 20, 12, h - 24);
+    }, 82, 112);
   }
 
-  function initMap() {
-    game.walls = Array.from({ length: game.mapH }, () => Array(game.mapW).fill(0));
-    game.zone = Array.from({ length: game.mapH }, () => Array(game.mapW).fill('g'));
-    const W = game.walls;
-    const Z = game.zone;
-    const setWallRect = (x1, y1, x2, y2, id) => {
-      for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) W[y][x] = id;
-    };
-    const setZoneRect = (x1, y1, x2, y2, code) => {
-      for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) Z[y][x] = code;
-    };
+  buildTextures();
 
-    for (let x = 0; x < game.mapW; x++) { W[0][x] = 9; W[game.mapH - 1][x] = 9; }
-    for (let y = 0; y < game.mapH; y++) { W[y][0] = 9; W[y][game.mapW - 1] = 9; }
-
-    // Main roads and narrow lanes
-    setZoneRect(2, 22, 31, 29, 'a');
-    setZoneRect(12, 10, 30, 21, 'a');
-    setZoneRect(6, 18, 13, 29, 'a');
-    setZoneRect(23, 8, 28, 29, 'a');
-    setZoneRect(4, 24, 10, 31, 'a');
-    setZoneRect(31, 16, 35, 22, 'a');
-    setZoneRect(32, 9, 36, 15, 'a');
-
-    // Parking and forecourt
-    setZoneRect(15, 15, 28, 21, 'p');
-    setZoneRect(17, 12, 26, 14, 'c');
-
-    // Canal + bridge area
-    setZoneRect(28, 22, 30, 31, 'w');
-    setZoneRect(27, 25, 31, 26, 'b');
-    setWallRect(27, 22, 27, 31, 8);
-    setWallRect(31, 22, 31, 31, 8);
-    W[25][27] = 0; W[26][27] = 0; W[25][31] = 0; W[26][31] = 0;
-
-    // Convenience store building outer shell
-    const sx1 = 17, sy1 = 8, sx2 = 27, sy2 = 14;
-    for (let x = sx1; x <= sx2; x++) { W[sy1][x] = 1; W[sy2][x] = 1; }
-    for (let y = sy1; y <= sy2; y++) { W[y][sx1] = 1; W[y][sx2] = 1; }
-    W[sy2][21] = 0; W[sy2][22] = 0; W[sy2][23] = 0; // entrance opening
-    setZoneRect(18, 9, 26, 13, 'i');
-    setZoneRect(21, 14, 23, 14, 'c');
-
-    // Store interior shelves and counter
-    setWallRect(19, 9, 19, 12, 4); // fridge row
-    setWallRect(21, 10, 21, 12, 3);
-    setWallRect(23, 10, 23, 12, 3);
-    setWallRect(25, 9, 26, 9, 5); // counter top near back-right
-    setWallRect(25, 10, 25, 12, 5);
-    W[24][9] = 4; W[24][10] = 4; W[24][11] = 4; W[24][12] = 4; // cooler island
-    W[20][13] = 0; W[24][13] = 0;
-
-    // Home and houses
-    const makeHouse = (x1, y1, x2, y2, id = 2) => {
-      for (let x = x1; x <= x2; x++) { W[y1][x] = id; W[y2][x] = id; }
-      for (let y = y1; y <= y2; y++) { W[y][x1] = id; W[y][x2] = id; }
-      setZoneRect(x1 + 1, y1 + 1, x2 - 1, y2 - 1, 'h');
-    };
-    makeHouse(4, 24, 8, 27, 2);
-    makeHouse(10, 23, 13, 26, 6);
-    makeHouse(8, 18, 12, 21, 2);
-    makeHouse(32, 17, 35, 20, 2);
-    makeHouse(33, 10, 36, 13, 6);
-    makeHouse(2, 15, 5, 18, 2);
-
-    // Closed dagashi shop
-    for (let x = 31; x <= 35; x++) { W[23][x] = 7; W[27][x] = 7; }
-    for (let y = 23; y <= 27; y++) { W[y][31] = 7; W[y][35] = 7; }
-    setZoneRect(32, 24, 34, 26, 'c');
-
-    // Shrine path boundaries
-    setZoneRect(34, 7, 40, 12, 's');
-    setWallRect(33, 7, 33, 12, 8);
-    setWallRect(41, 7, 41, 12, 8);
-    setWallRect(34, 6, 40, 6, 8);
-
-    // Block fences and walls around homes
-    setWallRect(3, 28, 9, 28, 8);
-    setWallRect(14, 23, 14, 27, 8);
-    setWallRect(31, 14, 36, 14, 8);
-    setWallRect(6, 17, 6, 21, 8);
-
-    // Small guard rails / bridge edges / little walls
-    setWallRect(14, 15, 14, 18, 10);
-    setWallRect(15, 14, 19, 14, 10);
-    setWallRect(28, 15, 30, 15, 10);
-
-    // Keep roads/lane open after adding barriers
-    setZoneRect(6, 22, 14, 29, 'a');
-    setZoneRect(15, 15, 28, 21, 'p');
-    setZoneRect(23, 8, 28, 29, 'a');
-    setZoneRect(31, 16, 35, 22, 'a');
-
-    populateSprites();
-    populateInteractables();
+  function isBlocking(x, y) {
+    const mx = Math.floor(x);
+    const my = Math.floor(y);
+    if (mx < 0 || my < 0 || mx >= MAP_W || my >= MAP_H) return true;
+    return map[my][mx] !== 0;
   }
 
-  function addSprite(type, x, y, scale = 1, height = 1.1) {
-    game.sprites.push({ type, x, y, scale, height });
+  function floorTextureIdAt(x, y) {
+    const mx = clamp(Math.floor(x), 0, MAP_W - 1);
+    const my = clamp(Math.floor(y), 0, MAP_H - 1);
+    return floorMap[my][mx];
   }
 
-  function populateSprites() {
-    game.sprites = [];
-    // Store exterior and lot
-    addSprite('sign', 22.0, 8.25, 2.4, 0.75);
-    addSprite('lightPole', 16.1, 18.0, 1.7, 2.5);
-    addSprite('lightPole', 28.9, 17.2, 1.7, 2.4);
-    addSprite('powerPole', 14.5, 21.7, 2.0, 3.6);
-    addSprite('powerPole', 29.4, 21.2, 2.0, 3.8);
-    addSprite('powerPole', 8.0, 18.2, 2.0, 3.8);
-    addSprite('vending', 16.2, 13.5, 1.2, 1.4);
-    addSprite('car', 18.8, 18.2, 1.5, 1.0);
-    addSprite('car', 25.6, 18.0, 1.5, 1.0);
-    addSprite('bicycle', 15.4, 20.3, 1.1, 0.8);
-    addSprite('notice', 12.7, 16.2, 1.2, 1.6);
-    addSprite('phone', 30.8, 18.5, 1.1, 1.8);
-    addSprite('busStop', 31.6, 16.8, 1.2, 1.8);
-    addSprite('vending', 34.5, 21.8, 1.15, 1.4);
-    addSprite('tree', 37.2, 14.0, 1.8, 2.6);
-    addSprite('tree', 39.5, 9.8, 1.9, 2.6);
-    addSprite('tree', 4.0, 13.5, 2.2, 3.0);
-    addSprite('tree', 11.0, 31.0, 2.2, 3.0);
-    addSprite('shrine', 37.4, 8.8, 1.2, 1.8);
-    addSprite('curtain', 22.0, 8.7, 1.5, 1.1);
-    // Store interior detail
-    addSprite('crt', 25.8, 9.2, 0.8, 0.8);
-    addSprite('magazine', 26.55, 13.2, 0.9, 1.2);
-    addSprite('notice', 17.8, 14.3, 0.9, 0.8);
-    addSprite('vending', 18.6, 9.0, 0.65, 1.1);
+  const floorTextures = ['asphalt','tile','grass','concrete','dirt'];
+
+  function showMessage(text, ms = 1800) {
+    messageEl.textContent = text;
+    messageEl.classList.remove('hidden');
+    msgTimer = performance.now() + ms;
   }
 
-  function addInteractable(x, y, label, text, radius = 1.25) {
-    game.interactables.push({ x, y, label, text, radius });
-  }
-
-  function populateInteractables() {
-    game.interactables = [];
-    addInteractable(22.0, 18.2, '駐車場', '店の明かりが安心感になる配置。ここはあえて広すぎず、停め方にもムラを出しています。');
-    addInteractable(16.2, 13.6, '自販機', '夜だけ白く浮く自販機。店の光とは違う青白さで、歩いた時の目印になります。');
-    addInteractable(30.9, 18.4, '公衆電話', '田舎の夜に残っているだけで空気が出るスポット。今はまだ演出なし、雰囲気確認用です。');
-    addInteractable(31.5, 16.8, 'バス停', '人の生活圏がちゃんとある感じを出すためのバス停。ストーリーがなくても町に見えます。');
-    addInteractable(12.7, 16.2, '掲示板', '自治会の張り紙や祭りの告知が並ぶ想定。生活感はこういう小物で出すのが強いです。');
-    addInteractable(29.0, 25.5, '小橋', '側溝をまたぐだけの小橋。こういう細い導線が歩きたくなる田舎町を作ります。');
-    addInteractable(37.3, 8.8, '祠の階段', '奥に行きたくなる見せスポット。今はルート確認用だけど、先の余白としてかなり効きます。');
-    addInteractable(34.2, 24.7, '閉店店舗', '閉まった駄菓子屋風の面。今後、看板や汚れを足すと一気に生っぽくなります。');
-    addInteractable(25.65, 9.15, 'レジ横CRT', 'ブラウン管とオレンジ文字で、古い店の温度感を作っています。');
-    addInteractable(22.05, 10.8, '棚', '箱の積み木感を減らすため、棚は高さと色数、通路の抜け感を意識して再構成しています。');
-    addInteractable(19.0, 10.0, '冷蔵ケース', '冷蔵ケースは白い蛍光灯と青みを出して、店内の安心感を支える役にしています。');
-  }
-
-  const wallDefs = {
-    1: { name: 'shop', out: 'shopExterior', in: 'shopWallpaper' },
-    2: { name: 'houseA', out: 'houseWallA', in: 'houseWallA' },
-    3: { name: 'shelf', out: 'shelf', in: 'shelf' },
-    4: { name: 'fridge', out: 'fridge', in: 'fridge' },
-    5: { name: 'counter', out: 'counter', in: 'counter' },
-    6: { name: 'houseB', out: 'houseWallB', in: 'houseWallB' },
-    7: { name: 'shutter', out: 'shutter', in: 'shutter' },
-    8: { name: 'block', out: 'blockWall', in: 'blockWall' },
-    9: { name: 'fence', out: 'fence', in: 'fence' },
-    10: { name: 'rail', out: 'fence', in: 'fence' },
-  };
-
-  function getFloorTexture(zoneCode) {
-    switch (zoneCode) {
-      case 'a': return game.textures.asphalt;
-      case 'p': return game.textures.asphalt;
-      case 'c': return game.textures.concrete;
-      case 'i': return game.textures.tile;
-      case 'w': return game.textures.water;
-      case 'b': return game.textures.concrete;
-      case 's': return game.textures.stone;
-      case 'h': return game.textures.concrete;
-      default: return game.textures.grass;
+  function updateMessage(now) {
+    if (msgTimer && now > msgTimer) {
+      messageEl.classList.add('hidden');
+      msgTimer = 0;
     }
   }
 
-  function getCeilingTexture(zoneCode) {
-    return zoneCode === 'i' ? game.textures.ceiling : null;
-  }
-
-  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-
-  function isWalkable(x, y) {
-    const gx = Math.floor(x), gy = Math.floor(y);
-    if (gx < 0 || gy < 0 || gx >= game.mapW || gy >= game.mapH) return false;
-    return game.walls[gy][gx] === 0 && game.zone[gy][gx] !== 'w';
-  }
-
-  function movePlayer(dx, dy) {
-    const p = game.player;
-    const radius = 0.18;
-    if (isWalkable(p.x + dx, p.y)) p.x += dx;
-    else if (isWalkable(p.x + Math.sign(dx) * radius, p.y)) p.x += Math.sign(dx) * Math.min(Math.abs(dx), radius);
-    if (isWalkable(p.x, p.y + dy)) p.y += dy;
-    else if (isWalkable(p.x, p.y + Math.sign(dy) * radius)) p.y += Math.sign(dy) * Math.min(Math.abs(dy), radius);
-  }
-
-  function updateDirPlane() {
-    const p = game.player;
-    p.dirX = Math.cos(p.angle);
-    p.dirY = Math.sin(p.angle);
-    p.planeX = -p.dirY * 0.78;
-    p.planeY = p.dirX * 0.78;
-  }
-
-  function currentZone() {
-    return game.zone[Math.floor(game.player.y)][Math.floor(game.player.x)];
-  }
-
-  function update(dt) {
-    game.time += dt;
-    const p = game.player;
-    const moveSpeed = (state.running ? 4.55 : 2.65) * dt;
-    const sideX = -Math.sin(p.angle);
-    const sideY = Math.cos(p.angle);
-    const forward = -state.input.moveY;
-    const strafe = state.input.moveX;
-    const dx = (Math.cos(p.angle) * forward + sideX * strafe) * moveSpeed;
-    const dy = (Math.sin(p.angle) * forward + sideY * strafe) * moveSpeed;
-    movePlayer(dx, dy);
-
-    if (Math.abs(forward) + Math.abs(strafe) > 0.05) p.bob += dt * (state.running ? 14 : 8);
-
-    const near = findNearestInteractable();
-    if (near && performance.now() > state.showHintUntil) {
-      hintBox.textContent = `調べる: ${near.label}`;
-    } else if (performance.now() > state.showHintUntil) {
-      hintBox.textContent = '左下スティックで移動、右半分ドラッグで視点移動。細い路地やスポットの密度を見てください。';
-    }
-  }
-
-  function interact() {
-    const near = findNearestInteractable(true);
-    if (near) setHint(near.text, 4200);
-    else setHint('気になる場所の近くで、正面を向いてから「調べる」を押してください。', 2200);
-  }
-
-  function findNearestInteractable(requireFacing = false) {
-    const p = game.player;
+  function handleInteract() {
     let best = null;
-    let bestDist = Infinity;
-    for (const item of game.interactables) {
-      const dx = item.x - p.x;
-      const dy = item.y - p.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist > item.radius || dist > bestDist) continue;
-      if (requireFacing) {
-        const ndx = dx / Math.max(0.0001, dist);
-        const ndy = dy / Math.max(0.0001, dist);
-        const facing = ndx * Math.cos(p.angle) + ndy * Math.sin(p.angle);
-        if (facing < 0.55) continue;
+    let bestD = 1.25;
+    for (const h of hotspots) {
+      const d = Math.sqrt(dist2(state.x, state.y, h.x, h.y));
+      if (d < bestD) {
+        const dir = Math.atan2(h.y - state.y, h.x - state.x);
+        const diff = Math.abs(wrapAngle(dir - state.angle));
+        if (diff < 0.72) {
+          bestD = d;
+          best = h;
+        }
       }
-      best = item;
-      bestDist = dist;
     }
-    return best;
+    if (best) {
+      showMessage(best.text, 2400);
+      state.interactText = best.text;
+    } else {
+      showMessage('今はイベント未実装。マップの歩き心地と構図を確認してください。', 1800);
+      state.interactText = '今はイベント未実装。マップの歩き心地と構図を確認してください。';
+    }
   }
 
-  function render() {
-    const low = game.lowCtx;
-    const W = game.renderW;
-    const H = game.renderH;
-    game.lowCanvas.width = W;
-    game.lowCanvas.height = H;
-    const img = low.createImageData(W, H);
-    const pix = img.data;
-    const p = game.player;
-    const zoneCode = currentZone();
-    const bobOffset = Math.sin(p.bob) * (state.running ? 3.4 : 2.0);
-    const horizonY = Math.floor(H * 0.52 + bobOffset + p.pitch * 20);
+  runBtn.addEventListener('click', () => {
+    runOn = !runOn;
+    runBtn.textContent = `走る: ${runOn ? 'ON' : 'OFF'}`;
+    runBtn.classList.toggle('on', runOn);
+    runBtn.classList.toggle('off', !runOn);
+  });
 
-    // Draw sky backdrop first
-    low.drawImage(game.skyCanvas, ((p.angle / (Math.PI * 2)) * game.skyCanvas.width * 0.5) % game.skyCanvas.width, 0, game.skyCanvas.width, game.skyCanvas.height, -game.skyCanvas.width * 0.2, 0, W * 1.4, H * 0.68);
-    const back = low.getImageData(0, 0, W, H).data;
-    pix.set(back);
+  interactBtn.addEventListener('click', handleInteract);
+  scanlineBtn.addEventListener('click', () => {
+    scanlineOn = !scanlineOn;
+    scanlineBtn.textContent = `SCANLINE: ${scanlineOn ? 'ON' : 'OFF'}`;
+  });
 
-    // Floor / ceiling casting
-    for (let y = Math.max(0, horizonY); y < H; y++) {
-      const pz = 0.5 * H;
-      const rowDistance = pz / Math.max(1, y - H / 2 - p.pitch * 20);
-      const rayDirX0 = p.dirX - p.planeX;
-      const rayDirY0 = p.dirY - p.planeY;
-      const rayDirX1 = p.dirX + p.planeX;
-      const rayDirY1 = p.dirY + p.planeY;
-      const stepX = rowDistance * (rayDirX1 - rayDirX0) / W;
-      const stepY = rowDistance * (rayDirY1 - rayDirY0) / W;
-      let floorX = p.x + rowDistance * rayDirX0;
-      let floorY = p.y + rowDistance * rayDirY0;
-      for (let x = 0; x < W; x++) {
+  function resetJoystick() {
+    state.joyX = 0;
+    state.joyY = 0;
+    joyKnob.style.transform = 'translate(0px, 0px)';
+  }
+
+  function updateJoystick(clientX, clientY) {
+    const rect = joyBase.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const maxR = rect.width * 0.34;
+    const len = Math.hypot(dx, dy) || 1;
+    if (len > maxR) {
+      dx = dx / len * maxR;
+      dy = dy / len * maxR;
+    }
+    state.joyX = dx / maxR;
+    state.joyY = dy / maxR;
+    joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+  }
+
+  joyBase.addEventListener('pointerdown', (e) => {
+    joyId = e.pointerId;
+    joyBase.setPointerCapture(e.pointerId);
+    updateJoystick(e.clientX, e.clientY);
+  });
+  joyBase.addEventListener('pointermove', (e) => {
+    if (e.pointerId === joyId) updateJoystick(e.clientX, e.clientY);
+  });
+  joyBase.addEventListener('pointerup', (e) => {
+    if (e.pointerId === joyId) {
+      joyId = null;
+      resetJoystick();
+    }
+  });
+  joyBase.addEventListener('pointercancel', () => {
+    joyId = null;
+    resetJoystick();
+  });
+
+  const app = document.getElementById('app');
+  app.addEventListener('pointerdown', (e) => {
+    const half = window.innerWidth * 0.42;
+    if (e.clientX > half && !e.target.closest('#joystickBase') && !e.target.closest('button')) {
+      lookDragId = e.pointerId;
+      lookLastX = e.clientX;
+      app.setPointerCapture(e.pointerId);
+    }
+  });
+  app.addEventListener('pointermove', (e) => {
+    if (e.pointerId === lookDragId) {
+      const dx = e.clientX - lookLastX;
+      lookLastX = e.clientX;
+      state.angle = wrapAngle(state.angle + dx * ROT_SPEED);
+    }
+  });
+  app.addEventListener('pointerup', (e) => {
+    if (e.pointerId === lookDragId) lookDragId = null;
+  });
+  app.addEventListener('pointercancel', (e) => {
+    if (e.pointerId === lookDragId) lookDragId = null;
+  });
+
+  function castRay(rayAngle) {
+    const sin = Math.sin(rayAngle);
+    const cos = Math.cos(rayAngle);
+    let mapX = Math.floor(state.x);
+    let mapY = Math.floor(state.y);
+
+    const deltaDistX = Math.abs(1 / (cos || 1e-6));
+    const deltaDistY = Math.abs(1 / (sin || 1e-6));
+
+    let stepX, stepY, sideDistX, sideDistY;
+    if (cos < 0) {
+      stepX = -1;
+      sideDistX = (state.x - mapX) * deltaDistX;
+    } else {
+      stepX = 1;
+      sideDistX = (mapX + 1.0 - state.x) * deltaDistX;
+    }
+    if (sin < 0) {
+      stepY = -1;
+      sideDistY = (state.y - mapY) * deltaDistY;
+    } else {
+      stepY = 1;
+      sideDistY = (mapY + 1.0 - state.y) * deltaDistY;
+    }
+
+    let hit = 0;
+    let side = 0;
+    while (!hit) {
+      if (sideDistX < sideDistY) {
+        sideDistX += deltaDistX;
+        mapX += stepX;
+        side = 0;
+      } else {
+        sideDistY += deltaDistY;
+        mapY += stepY;
+        side = 1;
+      }
+      if (mapX < 0 || mapX >= MAP_W || mapY < 0 || mapY >= MAP_H) {
+        return { dist: MAX_DIST, texId: 0, texX: 0, side: 0, mapX: 0, mapY: 0 };
+      }
+      if (map[mapY][mapX] > 0) hit = map[mapY][mapX];
+    }
+
+    let perpDist;
+    if (side === 0) perpDist = (mapX - state.x + (1 - stepX) / 2) / (cos || 1e-6);
+    else perpDist = (mapY - state.y + (1 - stepY) / 2) / (sin || 1e-6);
+
+    let wallX;
+    if (side === 0) wallX = state.y + perpDist * sin;
+    else wallX = state.x + perpDist * cos;
+    wallX -= Math.floor(wallX);
+
+    let texX = Math.floor(wallX * textureSize);
+    if (side === 0 && cos > 0) texX = textureSize - texX - 1;
+    if (side === 1 && sin < 0) texX = textureSize - texX - 1;
+
+    return { dist: Math.max(perpDist, 0.001), texId: hit, texX, side, mapX, mapY };
+  }
+
+  function getWallTexture(tile) {
+    switch (tile) {
+      case 1: return textures.store;
+      case 2: return textures.shelf;
+      case 3: return textures.house;
+      case 4: return textures.shrine;
+      case 5: return textures.closedShop;
+      case 6: return textures.hedge;
+      default: return textures.house;
+    }
+  }
+
+  function drawSky() {
+    const grad = ctx.createLinearGradient(0, 0, 0, baseH);
+    grad.addColorStop(0, '#0d2b5d');
+    grad.addColorStop(0.24, '#0a2450');
+    grad.addColorStop(0.48, '#15203c');
+    grad.addColorStop(1, '#11161f');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    // distant orange sun glow / humid dusk
+    ctx.fillStyle = 'rgba(255, 150, 70, 0.12)';
+    ctx.beginPath();
+    ctx.arc(baseW * 0.62 + Math.sin(state.angle * 0.2) * 12, 108, 74, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.86)';
+    for (let i = 0; i < 30; i++) {
+      const x = (i * 97.3 + 23) % baseW;
+      const y = (i * 41.7 + 32) % 190;
+      ctx.fillRect(x, y, i % 3 === 0 ? 2 : 1, i % 3 === 0 ? 2 : 1);
+    }
+
+    const horizon = horizonBase + state.horizon;
+    const parallax = state.angle * 32;
+
+    ctx.fillStyle = '#1b2231';
+    ctx.beginPath();
+    ctx.moveTo(0, horizon + 26);
+    for (let x = 0; x <= baseW + 40; x += 36) {
+      const xx = x - (parallax * 0.18 % 40);
+      const peak = Math.sin((x + parallax * 0.4) * 0.045) * 15;
+      ctx.lineTo(xx, horizon + 24 - peak - ((x % 108) === 0 ? 14 : 0));
+    }
+    ctx.lineTo(baseW, horizon + 52);
+    ctx.lineTo(0, horizon + 52);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#2a3244';
+    for (let i = 0; i < 11; i++) {
+      const xx = ((i * 74 - parallax * 0.3) % (baseW + 90)) - 30;
+      const w = 20 + (i % 4) * 8;
+      const h = 18 + (i % 3) * 12;
+      ctx.fillRect(xx, horizon + 18 - h, w, h);
+    }
+
+    // electric wires in sky
+    ctx.strokeStyle = 'rgba(30,30,32,0.8)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-20, 118 + i * 8 + Math.sin(state.angle * 0.4 + i) * 2);
+      ctx.quadraticCurveTo(baseW * 0.45, 130 + i * 8 + Math.sin(state.angle * 0.3 + i) * 2, baseW + 20, 110 + i * 10);
+      ctx.stroke();
+    }
+  }
+
+  function drawFloorAndCeiling() {
+    const posZ = floorPlane * baseH;
+    const dirX = Math.cos(state.angle);
+    const dirY = Math.sin(state.angle);
+    const planeX = -dirY * Math.tan(HALF_FOV);
+    const planeY = dirX * Math.tan(HALF_FOV);
+    const horizon = horizonBase + state.horizon;
+
+    for (let y = horizon; y < baseH; y++) {
+      const p = y - horizon;
+      if (p === 0) continue;
+      const rowDist = (cameraHeight * posZ) / p;
+
+      const rayDirX0 = dirX - planeX;
+      const rayDirY0 = dirY - planeY;
+      const rayDirX1 = dirX + planeX;
+      const rayDirY1 = dirY + planeY;
+
+      const stepX = rowDist * (rayDirX1 - rayDirX0) / baseW;
+      const stepY = rowDist * (rayDirY1 - rayDirY0) / baseW;
+
+      let floorX = state.x + rowDist * rayDirX0;
+      let floorY = state.y + rowDist * rayDirY0;
+
+      for (let x = 0; x < baseW; x++) {
         const cellX = Math.floor(floorX);
         const cellY = Math.floor(floorY);
-        if (cellX >= 0 && cellY >= 0 && cellX < game.mapW && cellY < game.mapH) {
-          const zone = game.zone[cellY][cellX];
-          const ft = getFloorTexture(zone);
-          const tx = Math.floor(ft.size * (floorX - cellX)) & (ft.size - 1);
-          const ty = Math.floor(ft.size * (floorY - cellY)) & (ft.size - 1);
-          const tidx = (ty * ft.size + tx) * 4;
-          const idx = (y * W + x) * 4;
-          const shade = clamp(1.2 - rowDistance * 0.08, 0.18, 1.0);
-          pix[idx] = ft.data[tidx] * shade;
-          pix[idx + 1] = ft.data[tidx + 1] * shade;
-          pix[idx + 2] = ft.data[tidx + 2] * shade;
-          pix[idx + 3] = 255;
-
-          const ct = getCeilingTexture(zone);
-          if (ct) {
-            const cy = H - y - 1;
-            const cidx = (cy * W + x) * 4;
-            const cshade = clamp(1.04 - rowDistance * 0.09, 0.28, 1);
-            pix[cidx] = ct.data[tidx] * cshade;
-            pix[cidx + 1] = ct.data[tidx + 1] * cshade;
-            pix[cidx + 2] = ct.data[tidx + 2] * cshade;
-            pix[cidx + 3] = 255;
+        if (cellX >= 0 && cellY >= 0 && cellX < MAP_W && cellY < MAP_H) {
+          const texName = floorTextures[floorMap[cellY][cellX]];
+          const tex = textures[texName];
+          const tx = ((floorX - cellX) * textureSize) & (textureSize - 1);
+          const ty = ((floorY - cellY) * textureSize) & (textureSize - 1);
+          ctx.drawImage(tex, tx, ty, 1, 1, x, y, 1, 1);
+          // dim by distance
+          const shade = clamp((rowDist - 1) / 16, 0, 0.72);
+          if (shade > 0.01) {
+            ctx.fillStyle = `rgba(4,8,16,${shade})`;
+            ctx.fillRect(x, y, 1, 1);
           }
         }
         floorX += stepX;
         floorY += stepY;
       }
     }
-
-    // Wall casting
-    game.zBuffer = new Array(W).fill(Infinity);
-    for (let x = 0; x < W; x++) {
-      const cameraX = 2 * x / W - 1;
-      const rayDirX = p.dirX + p.planeX * cameraX;
-      const rayDirY = p.dirY + p.planeY * cameraX;
-      let mapX = Math.floor(p.x);
-      let mapY = Math.floor(p.y);
-      const deltaDistX = Math.abs(1 / (rayDirX || 0.00001));
-      const deltaDistY = Math.abs(1 / (rayDirY || 0.00001));
-      let stepX, stepY, sideDistX, sideDistY;
-      if (rayDirX < 0) { stepX = -1; sideDistX = (p.x - mapX) * deltaDistX; }
-      else { stepX = 1; sideDistX = (mapX + 1 - p.x) * deltaDistX; }
-      if (rayDirY < 0) { stepY = -1; sideDistY = (p.y - mapY) * deltaDistY; }
-      else { stepY = 1; sideDistY = (mapY + 1 - p.y) * deltaDistY; }
-
-      let hit = 0;
-      let side = 0;
-      let prevX = mapX;
-      let prevY = mapY;
-      while (!hit) {
-        prevX = mapX; prevY = mapY;
-        if (sideDistX < sideDistY) {
-          sideDistX += deltaDistX;
-          mapX += stepX;
-          side = 0;
-        } else {
-          sideDistY += deltaDistY;
-          mapY += stepY;
-          side = 1;
-        }
-        hit = game.walls[mapY]?.[mapX] || 0;
-        if (mapX < 0 || mapY < 0 || mapX >= game.mapW || mapY >= game.mapH) break;
-      }
-      if (!hit) continue;
-
-      const perpWallDist = side === 0 ? (mapX - p.x + (1 - stepX) / 2) / (rayDirX || 0.00001) : (mapY - p.y + (1 - stepY) / 2) / (rayDirY || 0.00001);
-      const lineHeight = Math.abs(Math.floor(H / Math.max(0.001, perpWallDist)));
-      let drawStart = -lineHeight / 2 + H / 2 + bobOffset + p.pitch * 20;
-      let drawEnd = lineHeight / 2 + H / 2 + bobOffset + p.pitch * 20;
-      drawStart = Math.max(0, Math.floor(drawStart));
-      drawEnd = Math.min(H - 1, Math.floor(drawEnd));
-
-      const wallDef = wallDefs[hit] || wallDefs[8];
-      const fromZone = game.zone[prevY][prevX];
-      const useInterior = fromZone === 'i';
-      const tex = game.textures[useInterior ? wallDef.in : wallDef.out];
-      let wallX;
-      if (side === 0) wallX = p.y + perpWallDist * rayDirY;
-      else wallX = p.x + perpWallDist * rayDirX;
-      wallX -= Math.floor(wallX);
-      let texX = Math.floor(wallX * tex.size);
-      if (side === 0 && rayDirX > 0) texX = tex.size - texX - 1;
-      if (side === 1 && rayDirY < 0) texX = tex.size - texX - 1;
-      const shade = clamp((side ? 0.78 : 0.95) * (1.15 - perpWallDist * 0.06), 0.15, 1.0);
-      for (let y = drawStart; y <= drawEnd; y++) {
-        const d = y * 256 - H * 128 + lineHeight * 128;
-        const texY = ((d * tex.size) / lineHeight / 256) & (tex.size - 1);
-        const tidx = (texY * tex.size + texX) * 4;
-        const idx = (y * W + x) * 4;
-        pix[idx] = tex.data[tidx] * shade;
-        pix[idx + 1] = tex.data[tidx + 1] * shade;
-        pix[idx + 2] = tex.data[tidx + 2] * shade;
-        pix[idx + 3] = 255;
-      }
-      game.zBuffer[x] = perpWallDist;
-    }
-
-    low.putImageData(img, 0, 0);
-    renderSprites();
-    drawOverpaint();
-    drawToScreen();
   }
 
-  function renderSprites() {
-    const low = game.lowCtx;
-    const W = game.renderW;
-    const H = game.renderH;
-    const p = game.player;
-    const list = game.sprites.map(s => ({ ...s, dist: (p.x - s.x) ** 2 + (p.y - s.y) ** 2 })).sort((a, b) => b.dist - a.dist);
-    for (const s of list) {
-      const tex = game.spriteTextures[s.type];
-      if (!tex) continue;
-      const spriteX = s.x - p.x;
-      const spriteY = s.y - p.y;
-      const invDet = 1.0 / (p.planeX * p.dirY - p.dirX * p.planeY || 0.00001);
-      const transformX = invDet * (p.dirY * spriteX - p.dirX * spriteY);
-      const transformY = invDet * (-p.planeY * spriteX + p.planeX * spriteY);
-      if (transformY <= 0.1) continue;
+  function renderScene(now) {
+    drawSky();
+    drawFloorAndCeiling();
 
-      const spriteScreenX = Math.floor((W / 2) * (1 + transformX / transformY));
-      const spriteHeight = Math.abs(Math.floor(H / transformY * s.height));
-      const drawStartY = Math.floor(-spriteHeight / 2 + H / 2 + Math.sin(p.bob) * 2 + p.pitch * 20);
-      const drawEndY = drawStartY + spriteHeight;
-      const spriteWidth = Math.abs(Math.floor(H / transformY * s.scale));
-      const drawStartX = Math.floor(-spriteWidth / 2 + spriteScreenX);
-      const drawEndX = drawStartX + spriteWidth;
+    const zBuffer = new Float32Array(baseW);
+
+    for (let x = 0; x < baseW; x++) {
+      const cameraX = 2 * x / baseW - 1;
+      const rayAngle = state.angle + Math.atan(cameraX * Math.tan(HALF_FOV));
+      const ray = castRay(rayAngle);
+      const corrected = ray.dist * Math.cos(rayAngle - state.angle);
+      zBuffer[x] = corrected;
+      const lineH = Math.min(baseH * 1.5, (baseH / corrected));
+      const drawStart = Math.floor(baseH / 2 + state.horizon - lineH / 2);
+      const tex = getWallTexture(ray.texId);
+      const shade = clamp(corrected / MAX_DIST, 0, 1);
+
+      ctx.drawImage(tex, ray.texX, 0, 1, textureSize, x, drawStart, 1, lineH);
+      const wallShade = ray.side === 1 ? 0.12 : 0.05;
+      ctx.fillStyle = `rgba(8,12,20,${clamp(shade * 0.82 + wallShade, 0, 0.88)})`;
+      ctx.fillRect(x, drawStart, 1, lineH);
+    }
+
+    const ordered = sprites.map((s, i) => ({ ...s, _d: dist2(state.x, state.y, s.x, s.y), _i: i }))
+      .sort((a, b) => b._d - a._d);
+
+    const dirX = Math.cos(state.angle);
+    const dirY = Math.sin(state.angle);
+    const planeX = -dirY * Math.tan(HALF_FOV);
+    const planeY = dirX * Math.tan(HALF_FOV);
+
+    for (const s of ordered) {
+      const spriteX = s.x - state.x;
+      const spriteY = s.y - state.y;
+      const invDet = 1.0 / (planeX * dirY - dirX * planeY || 1e-6);
+      const transformX = invDet * (dirY * spriteX - dirX * spriteY);
+      const transformY = invDet * (-planeY * spriteX + planeX * spriteY);
+      if (transformY <= 0.08) continue;
+
+      const tex = spriteTextures[s.tex];
+      const spriteScreenX = Math.floor((baseW / 2) * (1 + transformX / transformY));
+      const spriteH = Math.abs(Math.floor((baseH / transformY) * (s.scale || 1)));
+      const spriteW = Math.floor(spriteH * (tex.width / tex.height));
+      const drawStartY = Math.floor(baseH / 2 + state.horizon - spriteH + spriteH * (1 - (s.yOffset || 1)));
+      const drawEndY = drawStartY + spriteH;
+      const drawStartX = Math.floor(spriteScreenX - spriteW / 2);
+      const drawEndX = drawStartX + spriteW;
+
       for (let stripe = drawStartX; stripe < drawEndX; stripe++) {
-        if (stripe < 0 || stripe >= W || transformY >= game.zBuffer[stripe]) continue;
-        const texX = Math.floor((stripe - drawStartX) * tex.size / spriteWidth);
-        low.save();
-        low.beginPath();
-        low.rect(stripe, drawStartY, 1, spriteHeight);
-        low.clip();
-        low.globalAlpha = clamp(1.2 - Math.sqrt(s.dist) * 0.07, 0.2, 1);
-        low.drawImage(tex.canvas, texX, 0, 1, tex.size, stripe, drawStartY, 1, spriteHeight);
-        low.restore();
+        if (stripe < 0 || stripe >= baseW || transformY >= zBuffer[stripe]) continue;
+        const texX = Math.floor((stripe - drawStartX) / spriteW * tex.width);
+        ctx.drawImage(tex, texX, 0, 1, tex.height, stripe, drawStartY, 1, spriteH);
+        const shade = clamp(transformY / MAX_DIST, 0, 0.88);
+        if (shade > 0.01) {
+          ctx.fillStyle = `rgba(8,12,20,${shade * 0.75})`;
+          ctx.fillRect(stripe, drawStartY, 1, spriteH);
+        }
       }
     }
-  }
 
-  function drawOverpaint() {
-    const g = game.lowCtx;
-    const W = game.renderW;
-    const H = game.renderH;
-    const zone = currentZone();
-
-    // window glow on store entrance
-    if (zone !== 'i') {
-      const grad = g.createRadialGradient(W * 0.5, H * 0.56, 10, W * 0.5, H * 0.56, W * 0.4);
-      grad.addColorStop(0, 'rgba(255,255,255,0.03)');
-      grad.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = grad;
-      g.fillRect(0, 0, W, H);
+    // parking lines and outdoor highlights overlay based on camera direction (subtle)
+    if (scanlineOn) {
+      ctx.fillStyle = 'rgba(255,255,255,0.045)';
+      for (let y = 0; y < baseH; y += 4) ctx.fillRect(0, y, baseW, 1);
     }
 
-    // vignetting
-    const vg = g.createRadialGradient(W * 0.5, H * 0.55, H * 0.22, W * 0.5, H * 0.55, H * 0.9);
-    vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(0,0,0,0.33)');
-    g.fillStyle = vg;
-    g.fillRect(0, 0, W, H);
-
-    if (zone === 'i') {
-      g.fillStyle = 'rgba(255, 244, 214, 0.04)';
-      g.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    for (let i = 0; i < 10; i++) {
+      const x = (i * 57 + now * 0.01) % baseW;
+      ctx.fillRect(x, (i * 43) % baseH, 1, 1);
     }
   }
 
-  function drawToScreen() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const cssW = window.innerWidth;
-    const cssH = window.innerHeight;
-    canvas.width = Math.floor(cssW * dpr);
-    canvas.height = Math.floor(cssH * dpr);
-    ctx.imageSmoothingEnabled = true;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(game.lowCanvas, 0, 0, canvas.width, canvas.height);
+  function update(dt) {
+    let speed = MOVE_SPEED * (runOn ? RUN_MULT : 1);
+    let forward = -state.joyY;
+    let strafe = state.joyX;
+    if (Math.abs(forward) < 0.06) forward = 0;
+    if (Math.abs(strafe) < 0.06) strafe = 0;
 
-    // soft bloom highlights for fluorescent lighting
-    const g = ctx;
-    g.save();
-    g.globalCompositeOperation = 'screen';
-    const grad = g.createRadialGradient(canvas.width * 0.5, canvas.height * 0.2, 0, canvas.width * 0.5, canvas.height * 0.2, canvas.width * 0.6);
-    grad.addColorStop(0, 'rgba(120,175,255,0.03)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = grad; g.fillRect(0, 0, canvas.width, canvas.height);
-    g.restore();
-
-    // crosshair
-    const cx = canvas.width * 0.5;
-    const cy = canvas.height * 0.5;
-    g.strokeStyle = 'rgba(255,255,255,0.82)';
-    g.lineWidth = 1 * dpr;
-    const gap = 6 * dpr;
-    const len = 10 * dpr;
-    g.beginPath();
-    g.moveTo(cx - len, cy); g.lineTo(cx - gap, cy);
-    g.moveTo(cx + gap, cy); g.lineTo(cx + len, cy);
-    g.moveTo(cx, cy - len); g.lineTo(cx, cy - gap);
-    g.moveTo(cx, cy + gap); g.lineTo(cx, cy + len);
-    g.stroke();
-  }
-
-  function resizeRenderTarget() {
-    const h = window.innerHeight;
-    const targetH = h > 900 ? 460 : h > 700 ? 404 : 360;
-    game.renderH = targetH;
-    game.renderW = Math.floor(targetH * (window.innerWidth / window.innerHeight));
-    if (game.renderW < 196) game.renderW = 196;
-    if (game.renderW > 320) game.renderW = 320;
-  }
-
-  function initInput() {
-    const joystick = {
-      active: false,
-      id: null,
-      cx: 0,
-      cy: 0,
-      radius: 0,
-    };
-
-    function updateStick(nx, ny) {
-      state.input.moveX = clamp(nx, -1, 1);
-      state.input.moveY = clamp(ny, -1, 1);
-      joystickStick.style.transform = `translate(${state.input.moveX * joystick.radius * 0.45}px, ${state.input.moveY * joystick.radius * 0.45}px)`;
+    let moveX = 0;
+    let moveY = 0;
+    if (forward || strafe) {
+      const len = Math.hypot(strafe, forward) || 1;
+      strafe /= len;
+      forward /= len;
+      const cos = Math.cos(state.angle);
+      const sin = Math.sin(state.angle);
+      moveX = (cos * forward - sin * strafe) * speed * dt;
+      moveY = (sin * forward + cos * strafe) * speed * dt;
     }
 
-    function endJoystick() {
-      joystick.active = false; joystick.id = null;
-      state.input.moveX = 0; state.input.moveY = 0;
-      joystickStick.style.transform = 'translate(0px, 0px)';
+    // collision with small radius and axis separation
+    const radius = 0.18;
+    const nx = state.x + moveX;
+    if (!isBlocking(nx + Math.sign(moveX) * radius, state.y) && !isBlocking(nx, state.y + radius) && !isBlocking(nx, state.y - radius)) {
+      state.x = nx;
+    }
+    const ny = state.y + moveY;
+    if (!isBlocking(state.x, ny + Math.sign(moveY) * radius) && !isBlocking(state.x + radius, ny) && !isBlocking(state.x - radius, ny)) {
+      state.y = ny;
     }
 
-    joystickBase.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      joystick.active = true; joystick.id = e.pointerId;
-      joystick.cx = joystickBase.getBoundingClientRect().left + joystickBase.clientWidth / 2;
-      joystick.cy = joystickBase.getBoundingClientRect().top + joystickBase.clientHeight / 2;
-      joystick.radius = joystickBase.clientWidth / 2;
-      joystickBase.setPointerCapture(e.pointerId);
-      const dx = e.clientX - joystick.cx;
-      const dy = e.clientY - joystick.cy;
-      const len = Math.hypot(dx, dy) || 1;
-      const max = joystick.radius * 0.7;
-      updateStick(dx / len * Math.min(max, len) / max, dy / len * Math.min(max, len) / max);
-      startAudioIfNeeded();
-    });
+    // keep from drifting into walls from spawn weirdness
+    state.x = clamp(state.x, 1.2, MAP_W - 1.2);
+    state.y = clamp(state.y, 1.2, MAP_H - 1.2);
 
-    joystickBase.addEventListener('pointermove', (e) => {
-      if (!joystick.active || joystick.id !== e.pointerId) return;
-      const dx = e.clientX - joystick.cx;
-      const dy = e.clientY - joystick.cy;
-      const len = Math.hypot(dx, dy) || 1;
-      const max = joystick.radius * 0.7;
-      updateStick(dx / len * Math.min(max, len) / max, dy / len * Math.min(max, len) / max);
-    });
-
-    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(evt => {
-      joystickBase.addEventListener(evt, (e) => {
-        if (!joystick.active) return;
-        if (e.pointerId === undefined || joystick.id === e.pointerId) endJoystick();
-      });
-    });
-
-    window.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button') || e.target === joystickBase || joystickBase.contains(e.target)) return;
-      if (e.clientX > window.innerWidth * 0.46) {
-        state.lookDragId = e.pointerId;
-        state.input.touchStarted = true;
-        startAudioIfNeeded();
+    // automatic nearby hint refresh
+    let nearest = null;
+    let bestD = 99;
+    for (const h of hotspots) {
+      const d = dist2(state.x, state.y, h.x, h.y);
+      if (d < bestD) {
+        bestD = d;
+        nearest = h;
       }
-    }, { passive: false });
-
-    window.addEventListener('pointermove', (e) => {
-      if (state.lookDragId !== e.pointerId) return;
-      game.player.angle += e.movementX ? e.movementX * 0.008 : (e.clientX - (state.lastLookX ?? e.clientX)) * 0.008;
-      state.lastLookX = e.clientX;
-      updateDirPlane();
-    }, { passive: false });
-
-    window.addEventListener('pointerup', (e) => {
-      if (state.lookDragId === e.pointerId) {
-        state.lookDragId = null;
-        state.lastLookX = null;
-      }
-    });
-
-    runBtn.addEventListener('click', () => {
-      state.running = !state.running;
-      runBtn.textContent = `走る: ${state.running ? 'ON' : 'OFF'}`;
-      runBtn.className = `pill ${state.running ? 'run-on' : 'run-off'}`;
-      setHint(state.running ? '走るをONにしました。長押し不要です。' : '走るをOFFにしました。歩き中心の速度に戻しています。', 1800);
-      startAudioIfNeeded();
-    });
-
-    interactBtn.addEventListener('click', () => { startAudioIfNeeded(); interact(); });
-    scanBtn.addEventListener('click', () => {
-      state.scanline = !state.scanline;
-      crtOverlay.classList.toggle('scan-on', state.scanline);
-      scanBtn.textContent = `SCANLINE: ${state.scanline ? 'ON' : 'OFF'}`;
-    });
-  }
-
-  function startAudioIfNeeded() {
-    if (state.audioStarted) return;
-    state.audioStarted = true;
-    // Light ambience without assets. Safe to ignore if browser blocks it.
-    try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      const ac = new AC();
-      const master = ac.createGain();
-      master.gain.value = 0.018;
-      master.connect(ac.destination);
-
-      // powerline hum
-      const hum = ac.createOscillator(); hum.type = 'sine'; hum.frequency.value = 62;
-      const humGain = ac.createGain(); humGain.gain.value = 0.08;
-      hum.connect(humGain).connect(master); hum.start();
-
-      // insect-ish filtered noise
-      const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.4;
-      const noise = ac.createBufferSource(); noise.buffer = buf; noise.loop = true;
-      const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 4200; bp.Q.value = 1.4;
-      const ng = ac.createGain(); ng.gain.value = 0.025;
-      noise.connect(bp).connect(ng).connect(master); noise.start();
-
-      // distant dog bark every so often
-      let timer = 0;
-      function bark() {
-        const now = ac.currentTime;
-        const osc = ac.createOscillator(); osc.type = 'triangle'; osc.frequency.setValueAtTime(250, now);
-        osc.frequency.exponentialRampToValueAtTime(140, now + 0.08);
-        const g = ac.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime(0.025, now + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-        osc.connect(g).connect(master); osc.start(now); osc.stop(now + 0.2);
-      }
-      setInterval(() => { if (Math.random() < 0.18) bark(); }, 9000);
-    } catch (err) {
-      console.warn(err);
+    }
+    if (nearest && bestD < 3.0) {
+      state.interactText = nearest.text;
+    } else {
+      state.interactText = '道・店・民家・分岐の構図が気持ちいいかを確認してください。';
     }
   }
 
-  function loop(t) {
-    const dt = Math.min(0.033, (t - state.lastTime) / 1000);
-    state.lastTime = t;
+  function animate(now) {
+    const dt = Math.min(0.033, (now - lastTime) / 1000);
+    lastTime = now;
     update(dt);
-    render();
-    requestAnimationFrame(loop);
+    renderScene(now);
+    updateMessage(now);
+    requestAnimationFrame(animate);
   }
 
-  window.addEventListener('resize', resizeRenderTarget);
-
-  createTextures();
-  initMap();
-  resizeRenderTarget();
-  updateDirPlane();
-  initInput();
-  requestAnimationFrame(loop);
+  // initial boot message
+  showMessage('開始位置は商店前通り。今度は最初から動ける版で組み直しています。', 2200);
+  requestAnimationFrame(animate);
 })();
