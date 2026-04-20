@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <title>田舎町・商店前通り</title>
-  <meta name="description" content="スマホ縦画面向けの一人称探索テスト。夜道から地方コンビニへ向かい、店内を調べる軽量Webゲーム。">
+  <title>深夜コンビニ - 縦画面ホラー試作</title>
+  <meta name="description" content="スマホ縦画面向けの一人称深夜コンビニ探索。夜道から店に入り、冷蔵ケースから飲み物を取り、レジ周辺を調べる軽量Webゲーム。">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,53 +12,52 @@
     <canvas id="game" aria-label="ゲーム画面"></canvas>
 
     <div id="hud">
-      <div class="top-row">
-        <div class="chip title-chip">
-          <div class="overline">縦画面スマホ向け / 一人称探索 / GitHub Pages版</div>
-          <div class="title">田舎町・商店前通り</div>
+      <div class="topbar">
+        <div class="title-chip chip">
+          <div class="overline">縦画面スマホ優先 / 一人称固定 / GitHub Pages版</div>
+          <div class="title">深夜の商店前</div>
         </div>
-        <button id="menuBtn" class="chip menu-chip" type="button" aria-expanded="false">MENU</button>
+        <button id="menuBtn" class="chip menu-btn" type="button" aria-expanded="false">MENU</button>
       </div>
 
       <div id="menuPanel" class="panel hidden">
-        <div class="panel-title">表示 / 操作</div>
+        <div class="panel-title">表示と操作</div>
         <div class="row"><span>SCANLINE</span><button id="scanlineToggle" class="mini-btn" type="button">ON</button></div>
         <div class="row"><span>QUALITY</span><button id="qualityToggle" class="mini-btn" type="button">MID</button></div>
         <div class="row"><span>感度</span><button id="sensitivityToggle" class="mini-btn" type="button">1.0x</button></div>
       </div>
 
-      <div id="hint" class="chip hint-chip">
-        左下で移動 / 右半分ドラッグで視点 / 右下「調べる」で反応
+      <div id="hint" class="hint chip">
+        左下スティックで移動 / 右半分ドラッグで視点 / 調べるで反応
       </div>
 
-      <div id="prompt" class="prompt hidden">調べる: 冷蔵ケース</div>
+      <div class="crosshair" aria-hidden="true"></div>
+      <div id="prompt" class="prompt hidden">調べる: 入口</div>
       <div id="message" class="message hidden"></div>
 
-      <div id="itemPickup" class="selection hidden">
-        <div class="selection-title">冷たい飲み物を選ぶ</div>
-        <div class="selection-buttons">
+      <div id="pickupPanel" class="pickup hidden">
+        <div class="pickup-title">冷たい飲み物を選ぶ</div>
+        <div class="pickup-row">
           <button class="pickup-btn" data-item="milk" type="button">乳酸飲料</button>
           <button class="pickup-btn" data-item="tea" type="button">麦茶</button>
           <button class="pickup-btn" data-item="cola" type="button">コーラ</button>
         </div>
       </div>
 
-      <div class="crosshair" aria-hidden="true"></div>
-
       <div id="heldItem" class="held-item hidden" aria-hidden="true">
         <div class="hand"></div>
         <div class="bottle"></div>
       </div>
 
-      <div id="leftZone" class="control-zone left-zone">
+      <div id="leftZone" class="zone left-zone">
         <div id="joystickBase" class="joystick-base">
           <div id="joystickStick" class="joystick-stick"></div>
         </div>
         <div class="zone-label">移動</div>
       </div>
 
-      <div id="rightZone" class="control-zone right-zone">
-        <div class="zone-label right-label">右半分ドラッグで視点</div>
+      <div id="rightZone" class="zone right-zone">
+        <div class="zone-label zone-label-right">視点</div>
       </div>
 
       <div class="actions">
