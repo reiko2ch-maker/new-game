@@ -1,65 +1,75 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>田舎町・商店前通り v8</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <title>田舎町・商店前通り</title>
+  <meta name="description" content="スマホ縦画面向けの一人称探索テスト。夜道から地方コンビニへ向かい、店内を調べる軽量Webゲーム。">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="app" class="scanline-off">
-    <canvas id="gameCanvas"></canvas>
+  <main id="app">
+    <canvas id="game" aria-label="ゲーム画面"></canvas>
 
-    <div class="hud top-left glass">
-      <div class="eyebrow">縦画面スマホ向け / 1から再構築 / マップ重視 v8</div>
-      <div class="title">田舎町・商店前通り</div>
-      <div class="subtitle">夏の夜の地方コンビニ周辺を、歩きやすさと立体感重視で再構築。</div>
+    <div id="hud">
+      <div class="top-row">
+        <div class="chip title-chip">
+          <div class="overline">縦画面スマホ向け / 一人称探索 / GitHub Pages版</div>
+          <div class="title">田舎町・商店前通り</div>
+        </div>
+        <button id="menuBtn" class="chip menu-chip" type="button" aria-expanded="false">MENU</button>
+      </div>
+
+      <div id="menuPanel" class="panel hidden">
+        <div class="panel-title">表示 / 操作</div>
+        <div class="row"><span>SCANLINE</span><button id="scanlineToggle" class="mini-btn" type="button">ON</button></div>
+        <div class="row"><span>QUALITY</span><button id="qualityToggle" class="mini-btn" type="button">MID</button></div>
+        <div class="row"><span>感度</span><button id="sensitivityToggle" class="mini-btn" type="button">1.0x</button></div>
+      </div>
+
+      <div id="hint" class="chip hint-chip">
+        左下で移動 / 右半分ドラッグで視点 / 右下「調べる」で反応
+      </div>
+
+      <div id="prompt" class="prompt hidden">調べる: 冷蔵ケース</div>
+      <div id="message" class="message hidden"></div>
+
+      <div id="itemPickup" class="selection hidden">
+        <div class="selection-title">冷たい飲み物を選ぶ</div>
+        <div class="selection-buttons">
+          <button class="pickup-btn" data-item="milk" type="button">乳酸飲料</button>
+          <button class="pickup-btn" data-item="tea" type="button">麦茶</button>
+          <button class="pickup-btn" data-item="cola" type="button">コーラ</button>
+        </div>
+      </div>
+
+      <div class="crosshair" aria-hidden="true"></div>
+
+      <div id="heldItem" class="held-item hidden" aria-hidden="true">
+        <div class="hand"></div>
+        <div class="bottle"></div>
+      </div>
+
+      <div id="leftZone" class="control-zone left-zone">
+        <div id="joystickBase" class="joystick-base">
+          <div id="joystickStick" class="joystick-stick"></div>
+        </div>
+        <div class="zone-label">移動</div>
+      </div>
+
+      <div id="rightZone" class="control-zone right-zone">
+        <div class="zone-label right-label">右半分ドラッグで視点</div>
+      </div>
+
+      <div class="actions">
+        <button id="runToggle" class="action-btn run-btn" type="button">走る: OFF</button>
+        <button id="interactBtn" class="action-btn interact-btn" type="button" disabled>調べる</button>
+      </div>
     </div>
 
-    <button id="menuBtn" class="hud menu-btn glass" aria-label="メニュー">☰</button>
-
-    <div id="menuPanel" class="menu-panel glass hidden">
-      <div class="menu-head">表示設定</div>
-      <div class="menu-row">
-        <span>SCANLINE</span>
-        <button id="toggleScanline" class="menu-toggle">OFF</button>
-      </div>
-      <div class="menu-row">
-        <span>QUALITY</span>
-        <button id="qualityBtn" class="menu-toggle">MID</button>
-      </div>
-      <div class="menu-row">
-        <span>感度</span>
-        <button id="sensitivityBtn" class="menu-toggle">1.0x</button>
-      </div>
-      <div class="menu-row">
-        <span>説明</span>
-        <button id="hideHintBtn" class="menu-toggle">表示</button>
-      </div>
-    </div>
-
-    <div id="hintBox" class="hud hint glass">
-      左下スティックで移動、右半分ドラッグで視点移動。<br />
-      右下の走るは ON/OFF。メニューから scanline を切り替えできます。
-    </div>
-
-    <div id="messageBox" class="hud message glass hidden"></div>
-
-    <div class="controls">
-      <div id="joystickBase" class="joystick-base">
-        <div id="joystickKnob" class="joystick-knob"></div>
-      </div>
-      <div class="controls-right">
-        <button id="runBtn" class="action-btn run-off">走る：OFF</button>
-        <button id="interactBtn" class="action-btn secondary">調べる</button>
-        <div id="lookCaption" class="look-caption">右半分ドラッグで視点移動</div>
-      </div>
-    </div>
-
-    <div class="labels">
-      <div class="label-left">移動</div>
-    </div>
-  </div>
+    <div id="scanlineOverlay" class="scanline"></div>
+    <div class="vignette"></div>
+  </main>
 
   <script src="game.js"></script>
 </body>
