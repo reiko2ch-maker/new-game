@@ -2,58 +2,37 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>深夜コンビニ探索 v13</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>深夜コンビニ探索 v14</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="app">
-    <canvas id="game"></canvas>
-    <div id="drag-zone" aria-hidden="true"></div>
-
-    <div id="hud">
-      <div id="top-panel" class="glass auto-fade">
-        <div class="eyebrow">縦画面スマホ向け / 現代寄り / 一人称3D探索</div>
-        <div class="title">深夜のこもれびストア</div>
-        <div class="sub">夜の小さな住宅地にある店。周辺を見回し、入店して冷蔵ケースとレジを調べる。</div>
+  <div id="game-root">
+    <div id="viewport"><div id="camera"><div id="world"></div></div></div>
+    <div id="view-drag-zone" aria-hidden="true"></div>
+    <div id="crosshair" aria-hidden="true"></div>
+    <div id="held-item" class="hidden" aria-hidden="true"><div class="bottle body"></div><div class="bottle cap"></div><div class="bottle label"></div></div>
+    <div id="top-bar">
+      <div id="title-card" class="panel ui-blocker">
+        <div class="eyebrow">縦画面スマホ向け / 高密度内装 + 小さな住宅地 + 操作改善</div>
+        <div class="title">深夜の商店前通り</div>
+        <div class="subtitle">夜道→店前→入店→冷蔵ケース→レジ。見える範囲の完成度を優先。</div>
       </div>
-
-      <button id="menu-toggle" class="glass button small ui-hit" type="button">MENU</button>
-
-      <div id="menu-panel" class="glass hidden ui-hit">
-        <div class="row"><span>Scanline</span><button id="scanline-toggle" class="button mini" type="button">OFF</button></div>
-        <div class="row"><span>感度</span><button id="sensitivity-toggle" class="button mini" type="button">標準</button></div>
-        <div class="row"><span>歩行揺れ</span><button id="bob-toggle" class="button mini" type="button">ON</button></div>
-      </div>
-
-      <div id="hint" class="glass auto-fade2">左は移動、右半分は視点。入口を調べると店に入れる。</div>
-      <div id="toast" class="glass hidden"></div>
-      <div id="prompt" class="glass hidden"></div>
-      <div id="crosshair" aria-hidden="true"></div>
-
-      <div id="left-ui">
-        <div id="joystick-zone" class="ui-hit">
-          <div id="joystick-base" class="hidden"><div id="joystick-knob"></div></div>
-        </div>
-        <div class="label">移動</div>
-      </div>
-
-      <div id="right-ui">
-        <button id="run-toggle" class="glass button pill ui-hit" type="button" aria-pressed="false">走る: OFF</button>
-        <button id="interact-btn" class="glass button pill primary ui-hit" type="button" disabled>調べる</button>
-      </div>
-
-      <div id="held-item" class="hidden" aria-hidden="true">
-        <div class="hand"></div>
-        <div class="bottle"></div>
-        <div class="cap"></div>
-        <div class="label-band"></div>
-      </div>
-
-      <div id="scanline-overlay" class="hidden" aria-hidden="true"></div>
-      <div id="vignette" aria-hidden="true"></div>
+      <button id="menu-toggle" class="icon-btn ui-blocker" type="button">MENU</button>
     </div>
+    <div id="hint" class="panel ui-pass"><span id="hint-text">左で移動、右半分ドラッグで視点移動</span></div>
+    <div id="menu-panel" class="panel hidden ui-blocker">
+      <div class="menu-row"><span>Scanline</span><button id="scanline-toggle" type="button">OFF</button></div>
+      <div class="menu-row"><span>感度</span><button id="sensitivity-toggle" type="button">標準</button></div>
+      <div class="menu-row"><span>歩行揺れ</span><button id="bob-toggle" type="button">ON</button></div>
+    </div>
+    <div id="bottom-ui">
+      <div id="left-ui" class="ui-blocker"><div id="joystick-base"><div id="joystick-knob"></div></div><div class="ui-label">移動</div></div>
+      <div id="right-ui"><button id="run-toggle" class="pill ui-blocker" type="button" aria-pressed="false">走る: OFF</button><button id="interact-btn" class="pill primary ui-blocker" type="button" disabled>調べる</button></div>
+    </div>
+    <div id="scanline-overlay" class="hidden" aria-hidden="true"></div>
+    <div id="vignette" aria-hidden="true"></div>
   </div>
-  <script type="module" src="main.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>
