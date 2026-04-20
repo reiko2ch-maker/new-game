@@ -3,36 +3,57 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <title>深夜コンビニ探索 v14</title>
+  <title>深夜コンビニ探索 v15 stable</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="game-root">
-    <div id="viewport"><div id="camera"><div id="world"></div></div></div>
-    <div id="view-drag-zone" aria-hidden="true"></div>
+    <div id="viewport">
+      <div id="camera"><div id="world"></div></div>
+    </div>
+
+    <div id="look-zone" aria-hidden="true"></div>
     <div id="crosshair" aria-hidden="true"></div>
-    <div id="held-item" class="hidden" aria-hidden="true"><div class="bottle body"></div><div class="bottle cap"></div><div class="bottle label"></div></div>
-    <div id="top-bar">
-      <div id="title-card" class="panel ui-blocker">
-        <div class="eyebrow">縦画面スマホ向け / 高密度内装 + 小さな住宅地 + 操作改善</div>
+
+    <div id="top-ui">
+      <div id="title-card" class="glass">
+        <div class="eyebrow">縦画面スマホ向け / 安定修正版</div>
         <div class="title">深夜の商店前通り</div>
-        <div class="subtitle">夜道→店前→入店→冷蔵ケース→レジ。見える範囲の完成度を優先。</div>
+        <div class="desc">左で移動、右半分ドラッグで視点移動。店へ向かい、入店して調べる。</div>
       </div>
-      <button id="menu-toggle" class="icon-btn ui-blocker" type="button">MENU</button>
+      <button id="menu-btn" class="glass small-btn" type="button">MENU</button>
     </div>
-    <div id="hint" class="panel ui-pass"><span id="hint-text">左で移動、右半分ドラッグで視点移動</span></div>
-    <div id="menu-panel" class="panel hidden ui-blocker">
-      <div class="menu-row"><span>Scanline</span><button id="scanline-toggle" type="button">OFF</button></div>
-      <div class="menu-row"><span>感度</span><button id="sensitivity-toggle" type="button">標準</button></div>
-      <div class="menu-row"><span>歩行揺れ</span><button id="bob-toggle" type="button">ON</button></div>
+
+    <div id="hint" class="glass"><span id="hint-text">左で移動、右半分ドラッグで視点移動</span></div>
+
+    <div id="menu" class="glass hidden">
+      <div class="row"><span>Scanline</span><button id="scanline-btn" type="button">OFF</button></div>
+      <div class="row"><span>感度</span><button id="sens-btn" type="button">標準</button></div>
+      <div class="row"><span>歩行揺れ</span><button id="bob-btn" type="button">ON</button></div>
     </div>
+
+    <div id="held-item" class="hidden" aria-hidden="true">
+      <div class="bottle body"></div>
+      <div class="bottle cap"></div>
+      <div class="bottle label"></div>
+    </div>
+
     <div id="bottom-ui">
-      <div id="left-ui" class="ui-blocker"><div id="joystick-base"><div id="joystick-knob"></div></div><div class="ui-label">移動</div></div>
-      <div id="right-ui"><button id="run-toggle" class="pill ui-blocker" type="button" aria-pressed="false">走る: OFF</button><button id="interact-btn" class="pill primary ui-blocker" type="button" disabled>調べる</button></div>
+      <div id="move-zone">
+        <div id="stick-base" class="glass"><div id="stick-knob"></div></div>
+        <div class="ui-label">移動</div>
+      </div>
+
+      <div id="right-ui">
+        <button id="run-btn" class="glass pill" type="button" aria-pressed="false">走る: OFF</button>
+        <button id="act-btn" class="glass pill primary" type="button" disabled>調べる</button>
+      </div>
     </div>
-    <div id="scanline-overlay" class="hidden" aria-hidden="true"></div>
-    <div id="vignette" aria-hidden="true"></div>
+
+    <div id="scanline" class="hidden"></div>
+    <div id="vignette"></div>
   </div>
+
   <script src="main.js"></script>
 </body>
 </html>

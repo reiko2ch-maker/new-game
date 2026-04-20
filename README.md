@@ -1,10 +1,20 @@
-# 深夜コンビニ探索 v14
-
-## 変更点
-- 前進方向を視点方向に合わせて修正
-- 左スティックを動的中心寄りに改善
-- 内装と住宅地の密度を追加
-- 走る/調べるの操作感を維持したまま微調整
+# 深夜コンビニ探索 v15 stable
 
 ## 反映方法
-index.html / styles.css / main.js を GitHub Pages の公開ルートに置いてください。
+- index.html
+- styles.css
+- main.js
+
+この3ファイルを GitHub Pages の公開ルートに置いてください。
+
+## 重要
+リポジトリ名が `new-game` なら、公開URLは通常  
+`https://reiko2ch-maker.github.io/new-game/`  
+です。
+
+## 操作
+- 左下スティック: 移動
+- 右半分ドラッグ: 視点移動
+- 右下「走る」: ON/OFF
+- 右下「調べる」: 対象に向いて近づいた時だけ有効
+- MENU: scanline / 感度 / 歩行揺れ
