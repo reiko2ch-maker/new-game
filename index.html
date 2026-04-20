@@ -3,20 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>深夜コンビニ探索 v12</title>
+  <title>深夜コンビニ探索 v13</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
     <canvas id="game"></canvas>
-
     <div id="drag-zone" aria-hidden="true"></div>
 
     <div id="hud">
       <div id="top-panel" class="glass auto-fade">
-        <div class="eyebrow">縦画面スマホ向け / 一人称 / 現代寄りUI</div>
-        <div class="title">深夜の商店前通り</div>
-        <div class="sub">左で移動、右半分ドラッグで視点。店に入り、冷蔵ケースとレジを調べる。</div>
+        <div class="eyebrow">縦画面スマホ向け / 現代寄り / 一人称3D探索</div>
+        <div class="title">深夜のこもれびストア</div>
+        <div class="sub">夜の小さな住宅地にある店。周辺を見回し、入店して冷蔵ケースとレジを調べる。</div>
       </div>
 
       <button id="menu-toggle" class="glass button small ui-hit" type="button">MENU</button>
@@ -27,14 +26,14 @@
         <div class="row"><span>歩行揺れ</span><button id="bob-toggle" class="button mini" type="button">ON</button></div>
       </div>
 
-      <div id="hint" class="glass auto-fade2">入口に近づいて「調べる」。右半分ドラッグで視点移動。</div>
+      <div id="hint" class="glass auto-fade2">左は移動、右半分は視点。入口を調べると店に入れる。</div>
       <div id="toast" class="glass hidden"></div>
       <div id="prompt" class="glass hidden"></div>
       <div id="crosshair" aria-hidden="true"></div>
 
       <div id="left-ui">
-        <div id="joystick-base" class="ui-hit">
-          <div id="joystick-knob"></div>
+        <div id="joystick-zone" class="ui-hit">
+          <div id="joystick-base" class="hidden"><div id="joystick-knob"></div></div>
         </div>
         <div class="label">移動</div>
       </div>
